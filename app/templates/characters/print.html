@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ character.name }} — ficha</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}">
+</head>
+<body>
+<div class="paper">
+
+  <div class="print-bar">
+    <p>Use <strong>Imprimir → Destino: Salvar como PDF</strong> para gerar o arquivo.
+      Marque “Gráficos de segundo plano” se quiser as bordas.</p>
+    <span class="buttons">
+      <a href="{{ url_for('characters.detail', character_id=character.id) }}">← Voltar à ficha</a>
+      <button type="button" onclick="window.print()">Imprimir / salvar PDF</button>
+    </span>
+  </div>
+
+  <div class="head">
+    {% if character.avatar_url %}<img src="{{ character.avatar_url }}" alt="">{% endif %}
+    <div>
+      <h1>{{ character.name }}</h1>
+      <p class="sub">
+        {{ character.concept or 'sem conceito' }} ·
+        {{ character.system.name }}
+        {% if character.campaign %} · {{ character.campaign.name }}{% endif %}
+        {% if character.kind != 'pj' %} · {{ character.kind }}{% endif %}
+      </p>
+      <p class="sub">{{ sheet.roll.label }}</p>
+    </div>
+  </div>
+
+  {% if sheet.meta %}
+    <div class="block">
+      <h2>Identidade</h2>
+      <div class="pairs">
+        {% for field in sheet.meta %}
+          <div class="pair">
+            <span class="k">{{ field.name }}</span>
+            <span class="v">{{ field.value or '—' }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="block">
+    <h2>Atributos</h2>
+    <div class="attrs">
+      {% for attribute in sheet.attributes %}
+        <div class="attr">
+          <div class="k">{{ attribute.abbr or attribute.name }}</div>
+          <div class="v">{{ attribute.value }}</div>
+          {% if sheet.display == 'modifier' %}<div class="m">{{ attribute.modifier|signed }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Barras</h2>
+    <div class="bars">
+      {% for bar in sheet.bars %}
+        <div class="bar">
+          <div class="k">{{ bar.name }}</div>
+          <div class="v">{{ bar.current }} / {{ bar.max }}{% if bar.temp %} <small>(+{{ bar.temp }})</small>{% endif %}</div>
+          <div class="boxes"><div style="width:{{ bar.percent }}%"></div></div>
+          <div class="rest">descanso: curto {{ bar.rest_short|lower }} · longo {{ bar.rest_long|lower }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if sheet.conditions %}
+    <div class="block">
+      <h2>Condições ativas</h2>
+      <div class="chips">
+        {% for c in sheet.conditions %}
+          <span class="chip">{{ c.name }}{% if c.rounds %} ({{ c.rounds }} rod.){% endif %}</span>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="block">
+    <h2>Perícias</h2>
+    <div class="skills">
+      {% for skill in sheet.skills %}
+        <div class="skill {{ 'trained' if skill.train or skill.prof }}">
+          <span class="n">{{ skill.name }}{% if skill.attr_abbr %} <span class="muted-print">{{ skill.attr_abbr }}</span>{% endif %}</span>
+          <span class="t">
+            {% if sheet.skill_mode == 'percent' %}{{ skill.total }}%
+            {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice }}d+{{ skill.total }}
+            {% elif sheet.skill_mode == 'dots' %}{{ skill.total }}d
+            {% else %}{{ skill.total|signed }}{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if sheet.attacks %}
+    <div class="block">
+      <h2>{{ sheet.labels.attacks }}</h2>
+      <table>
+        <thead><tr><th>Nome</th><th>Teste</th><th class="num">Bônus</th><th>Dano</th>
+                   <th class="num">Crít.</th><th>Alcance</th></tr></thead>
+        <tbody>
+          {% for a in sheet.attacks %}
+            <tr>
+              <td><strong>{{ a.name }}</strong>{% if a.desc %}<br><span class="muted-print">{{ a.desc }}</span>{% endif %}</td>
+              <td>{{ a.test or '—' }}</td>
+              <td class="num">{{ a.bonus|signed }}</td>
+              <td>{{ a.damage or '—' }}</td>
+              <td class="num">{{ a.crit or '—' }}</td>
+              <td>{{ a.range or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if sheet.abilities %}
+    <div class="block">
+      <h2>{{ sheet.labels.abilities }}</h2>
+      <table>
+        <tbody>
+          {% for item in sheet.abilities %}
+            <tr><td style="width:30%"><strong>{{ item.name }}</strong></td><td>{{ item.desc }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if sheet.spells %}
+    <div class="block">
+      <h2>{{ sheet.labels.spells }}</h2>
+      <table>
+        <thead><tr><th class="num">{{ sheet.labels.spell_level }}</th><th>Nome</th>
+                   <th>Custo</th><th>Execução</th><th>Alcance</th><th>Duração</th></tr></thead>
+        <tbody>
+          {% for s in sheet.spells %}
+            <tr>
+              <td class="num">{{ s.level }}</td>
+              <td><strong>{{ s.prepared and '☑' or '☐' }} {{ s.name }}</strong>
+                  {% if s.desc %}<br><span class="muted-print">{{ s.desc }}</span>{% endif %}</td>
+              <td>{{ s.cost or '—' }}</td>
+              <td>{{ s.execution or '—' }}</td>
+              <td>{{ s.range or '—' }}</td>
+              <td>{{ s.duration or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <div class="block">
+    <h2>Inventário</h2>
+    {% if sheet.load.mode != 'none' %}
+      <p class="muted-print">
+        Carga: <strong>{{ sheet.load.used|number }}</strong> de
+        {{ sheet.load.capacity|number }} {{ sheet.load.unit }}
+        {% if sheet.load.label %}— {{ sheet.load.label }}{% endif %}
+      </p>
+    {% endif %}
+    {% if sheet.money %}
+      <div class="chips" style="margin-bottom:.35rem">
+        {% for coin in sheet.money %}
+          <span class="chip">{{ coin.abbr or coin.name }} {{ coin.value }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if sheet.inventory %}
+      <table>
+        <thead>
+          <tr><th>Item</th><th class="num">Qtd</th>
+              {% if sheet.load.mode != 'none' %}<th class="num">{{ sheet.load.unit }}</th>{% endif %}
+              <th>Tipo</th><th class="num">Valor</th><th>Detalhes</th></tr>
+        </thead>
+        <tbody>
+          {% for item in sheet.inventory %}
+            <tr>
+              <td>{{ item.equipped and '▸' or '' }} <strong>{{ item.name }}</strong></td>
+              <td class="num">{{ item.qty }}</td>
+              {% if sheet.load.mode != 'none' %}<td class="num">{{ item.weight|number }}</td>{% endif %}
+              <td>{{ item.category }}</td>
+              <td class="num">{{ item.value or '—' }}</td>
+              <td>{{ item.desc }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="lines"></div><div class="lines"></div><div class="lines"></div>
+    {% endif %}
+  </div>
+
+  <div class="block">
+    <h2>Experiência</h2>
+    <p><strong>{{ sheet.xp }}</strong> XP</p>
+    {% if sheet.progress %}
+      <table>
+        <thead><tr><th class="num">Quando</th><th>O que aconteceu</th><th class="num">XP</th></tr></thead>
+        <tbody>
+          {% for entry in sheet.progress[-12:]|reverse %}
+            <tr><td class="num">{{ entry.at or '—' }}</td>
+                <td>{{ entry.name }}{% if entry.desc %} — {{ entry.desc }}{% endif %}</td>
+                <td class="num">{{ entry.amount }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+
+  <div class="cols">
+    <div class="block">
+      <h2>Aparência</h2>
+      {% if sheet.appearance %}
+        <div class="prose-print">{{ sheet.appearance }}</div>
+      {% else %}
+        <div class="lines"></div><div class="lines"></div><div class="lines"></div>
+      {% endif %}
+    </div>
+    <div class="block">
+      <h2>História</h2>
+      {% if sheet.history %}
+        <div class="prose-print">{{ sheet.history }}</div>
+      {% else %}
+        <div class="lines"></div><div class="lines"></div><div class="lines"></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Anotações</h2>
+    {% if sheet.notes %}
+      <div class="prose-print">{{ sheet.notes }}</div>
+    {% else %}
+      <div class="lines"></div><div class="lines"></div><div class="lines"></div><div class="lines"></div>
+    {% endif %}
+  </div>
+
+</div>
+</body>
+</html>

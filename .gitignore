@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Dados de verdade nunca vão para o repositório
+instance/
+.env
+
+.venv/
+venv/
+
+# Configuração local do editor/assistente
+.claude/

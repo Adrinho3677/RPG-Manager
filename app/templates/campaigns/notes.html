@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Anotações · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Anotações</h2>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('campaigns.note_form', campaign_id=campaign.id) }}">+ Nova anotação</a>
+  </div>
+
+  <form method="get" class="field-row" style="margin-bottom:1rem">
+    <div class="field" style="margin:0">
+      <input type="text" name="q" value="{{ search }}" placeholder="Buscar por título, texto ou tag">
+    </div>
+    <div class="field" style="margin:0">
+      <select name="categoria" onchange="this.form.submit()">
+        <option value="">Todas as categorias</option>
+        {% for value, label in categories %}
+          <option value="{{ value }}" {% if active_category == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="margin:0">
+      <button class="btn btn-ghost btn-block" type="submit">Filtrar</button>
+    </div>
+  </form>
+
+  {% if notes %}
+    <div class="grid grid-2">
+      {% for note in notes %}
+        <div class="card note-card" style="box-shadow:none">
+          <div class="card-head" style="margin-bottom:.5rem">
+            <h3>{% if note.pinned %}📌 {% endif %}{{ note.title }}</h3>
+            <span class="tags">
+              <span class="tag">{{ dict(categories).get(note.category, note.category) }}</span>
+              {% if note.visibility == 'mestre' %}
+                <span class="tag tag-danger">só mestre</span>
+              {% elif note.visibility == 'jogadores' %}
+                {% if is_master %}
+                  <span class="tag tag-accent" title="{{ note.recipients|map(attribute='user')|map(attribute='username')|join(', ') }}">
+                    para {{ note.recipients|length }} jogador(es)
+                  </span>
+                {% else %}
+                  {# Não diz quem mais recebeu: isso também pode ser segredo. #}
+                  <span class="tag tag-accent">para você</span>
+                {% endif %}
+              {% endif %}
+              {% if note.recently_revealed and not is_master %}<span class="tag tag-gold">revelada agora</span>{% endif %}
+            </span>
+          </div>
+          <div class="prose small">{{ note.body|excerpt(260)|rich }}</div>
+          {% if note.tag_list %}
+            <div class="tags" style="margin-top:.5rem">
+              {% for tag in note.tag_list %}<span class="tag tag-accent">#{{ tag }}</span>{% endfor %}
+            </div>
+          {% endif %}
+          <div class="actions" style="margin-top:.7rem">
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.note_form', campaign_id=campaign.id, note_id=note.id) }}">Abrir</a>
+            {% if is_master or note.author_id == current_user.id %}
+              <form method="post" action="{{ url_for('campaigns.note_pin', campaign_id=campaign.id, note_id=note.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm" type="submit">{{ 'Desafixar' if note.pinned else 'Fixar' }}</button>
+              </form>
+            {% endif %}
+            {% if is_master and note.visibility == 'mestre' %}
+              <form method="post" action="{{ url_for('campaigns.note_reveal', campaign_id=campaign.id, note_id=note.id) }}"
+                    onsubmit="return confirm('Revelar “{{ note.title }}” para a mesa toda?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="target" value="mesa">
+                <button class="btn btn-gold btn-sm" type="submit">👁️ Revelar</button>
+              </form>
+            {% endif %}
+            <span class="muted small" style="margin-left:auto">{{ note.author.username }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <p>Nada por aqui{% if search or active_category %} com esse filtro{% endif %}.</p>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('campaigns.note_form', campaign_id=campaign.id) }}">Criar anotação</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

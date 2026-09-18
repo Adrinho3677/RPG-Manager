@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Nova ficha · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:600px">
+  <div class="card">
+    <h1>Nova ficha</h1>
+    {% if campaign %}
+      <p class="muted">Campanha: <strong>{{ campaign.name }}</strong> · sistema {{ campaign.system.name }}</p>
+    {% else %}
+      <p class="muted">Ficha avulsa — você pode ligá-la a uma campanha depois.</p>
+    {% endif %}
+
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if campaign %}<input type="hidden" name="campaign_id" value="{{ campaign.id }}">{% endif %}
+
+      <div class="field">
+        <label for="name">Nome</label>
+        <input type="text" id="name" name="name" required autofocus>
+      </div>
+      <div class="field">
+        <label for="concept">Conceito</label>
+        <input type="text" id="concept" name="concept" placeholder="Ex.: ex-policial obcecado pelo oculto">
+      </div>
+
+      {% if not campaign %}
+        <div class="field">
+          <label for="system_id">Sistema</label>
+          <select id="system_id" name="system_id" required>
+            {% for system in systems %}
+              <option value="{{ system.id }}">{{ system.name }}{% if system.is_preset %} · modelo pronto{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if my_campaigns %}
+          <p class="hint">Dica: crie a ficha direto pela campanha para já herdar o sistema dela.</p>
+        {% endif %}
+      {% endif %}
+
+      <div class="field">
+        <label for="kind">Tipo</label>
+        <select id="kind" name="kind">
+          {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+        {% if campaign and not campaign.is_master(current_user) %}
+          <p class="hint">Só o mestre desta campanha pode criar NPCs e criaturas.</p>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label for="avatar_url">URL da imagem (opcional)</label>
+        <input type="url" id="avatar_url" name="avatar_url" placeholder="https://...">
+      </div>
+
+      <div class="field">
+        <label class="check"><input type="checkbox" name="visible_to_players" checked> Visível para os jogadores</label>
+      </div>
+
+      <button class="btn btn-primary btn-block" type="submit">Criar ficha</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+<div class="split">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>A campanha</h2>
+        <span class="tag {{ 'tag-ok' if campaign.status == 'ativa' else 'tag-gold' }}">{{ campaign.status }}</span>
+      </div>
+      {% if campaign.description %}
+        <div class="prose">{{ campaign.description|rich }}</div>
+      {% else %}
+        <p class="muted">Sem descrição ainda.
+          {% if is_master %}<a href="{{ url_for('campaigns.edit', campaign_id=campaign.id) }}">Escrever a premissa</a>.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Personagens da mesa</h2>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.create', campanha=campaign.id) }}">+ Criar ficha</a>
+      </div>
+      {% if characters %}
+        <div class="grid grid-3">
+          {% for character in characters %}
+            <a class="card campaign-card" href="{{ url_for('characters.detail', character_id=character.id) }}">
+              <h3>{{ character.name }}</h3>
+              <p class="muted small">{{ character.concept or 'sem conceito' }}</p>
+              <span class="tag">{{ character.owner.username }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty"><p>Nenhuma ficha criada nesta campanha ainda.</p></div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Sessões recentes</h2>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.sessions', campaign_id=campaign.id) }}">Ver todas</a>
+      </div>
+      {% if sessions %}
+        <div class="list">
+          {% for item in sessions %}
+            <a class="list-item" href="{{ url_for('campaigns.session_detail', campaign_id=campaign.id, session_id=item.id) }}">
+              <span>
+                <strong>#{{ item.number }} · {{ item.title }}</strong>
+                <span class="meta">{{ item.scheduled_for.strftime('%d/%m/%Y') if item.scheduled_for else 'sem data' }}</span>
+              </span>
+              <span class="tag {{ 'tag-ok' if item.status == 'realizada' else ('tag-danger' if item.is_late else 'tag-gold') }}">
+                {{ item.status }}
+              </span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty"><p>Nenhuma sessão registrada.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h3>Próxima sessão</h3>
+      {% set nxt = campaign.next_session %}
+      {% if nxt %}
+        <p><strong>#{{ nxt.number }} · {{ nxt.title }}</strong></p>
+        <p class="muted small">
+          {{ nxt.scheduled_for.strftime('%d/%m/%Y') if nxt.scheduled_for else 'data a combinar' }}{% if nxt.start_time %} às {{ nxt.start_time }}{% endif %}
+          {% if nxt.is_late %}<span class="tag tag-danger">atrasada</span>{% endif %}
+        </p>
+        {% if nxt.beats %}
+          <div class="progress" style="margin:.5rem 0"><div style="width:{{ nxt.progress }}%"></div></div>
+          <p class="muted small">{{ nxt.progress }}% do roteiro preparado</p>
+        {% endif %}
+        <a class="btn btn-ghost btn-block btn-sm"
+           href="{{ url_for('campaigns.session_detail', campaign_id=campaign.id, session_id=nxt.id) }}">Abrir roteiro</a>
+      {% else %}
+        <p class="muted small">Nenhuma sessão planejada.</p>
+        {% if is_master %}
+          <a class="btn btn-gold btn-block btn-sm" href="{{ url_for('campaigns.sessions', campaign_id=campaign.id) }}">Planejar agora</a>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Convite</h3>
+      <p class="muted small">Código para a mesa entrar:</p>
+      <p class="center"><span class="code-pill">{{ campaign.invite_code }}</span></p>
+      <a class="btn btn-ghost btn-block btn-sm" href="{{ url_for('campaigns.members', campaign_id=campaign.id) }}">
+        Ver a mesa ({{ campaign.members.count() }})
+      </a>
+    </div>
+
+    {% if revealed %}
+      <div class="card card-highlight">
+        <div class="card-head"><h3>👁️ Revelado para você</h3></div>
+        <div class="list">
+          {% for note in revealed %}
+            <a class="list-item" href="{{ url_for('campaigns.note_form', campaign_id=campaign.id, note_id=note.id) }}">
+              <span>
+                <strong>{{ note.title }}</strong>
+                <span class="meta">{{ note.body|excerpt(60) }}</span>
+              </span>
+              <span class="tag tag-gold">novo</span>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head"><h3>Anotações fixadas</h3></div>
+      {% if pinned %}
+        <div class="list">
+          {% for note in pinned %}
+            <a class="list-item" href="{{ url_for('campaigns.note_form', campaign_id=campaign.id, note_id=note.id) }}">
+              <span>
+                <strong>{{ note.title }}</strong>
+                <span class="meta">{{ note.body|excerpt(60) }}</span>
+              </span>
+              {% if note.visibility == 'mestre' %}<span class="tag tag-danger">mestre</span>{% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted small">Fixe anotações importantes para elas aparecerem aqui.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Últimos acontecimentos</h3>
+      {% if timeline %}
+        <div class="timeline">
+          {% for entry in timeline %}
+            <div class="timeline-item">
+              <strong>{{ entry.title }}</strong>
+              {% if entry.label %}<div class="muted small">{{ entry.label }}</div>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted small">A linha do tempo está vazia.</p>
+      {% endif %}
+    </div>
+
+    {% if not is_master %}
+      <form method="post" action="{{ url_for('campaigns.leave', campaign_id=campaign.id) }}"
+            onsubmit="return confirm('Sair desta campanha?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-danger btn-block btn-sm" type="submit">Sair da campanha</button>
+      </form>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

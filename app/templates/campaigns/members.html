@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Mesa · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+<div class="split">
+  <div class="card">
+    <div class="card-head"><h2>Quem está na mesa</h2><span class="tag">{{ roster|length }}</span></div>
+    <div class="list">
+      {% for member in roster %}
+        <div class="list-item">
+          <span>
+            <strong>{{ member.user.username }}
+              {% if member.user_id == campaign.master_id %}<span class="tag tag-gold">mestre</span>{% endif %}
+            </strong>
+            <span class="meta">
+              {% for character in chars.get(member.user_id, []) %}
+                <a href="{{ url_for('characters.detail', character_id=character.id) }}">{{ character.name }}</a>{% if not loop.last %} · {% endif %}
+              {% else %}
+                sem ficha nesta campanha
+              {% endfor %}
+            </span>
+          </span>
+          {% if is_master and member.user_id != campaign.master_id %}
+            <form method="post" action="{{ url_for('campaigns.remove_member', campaign_id=campaign.id, member_id=member.id) }}"
+                  onsubmit="return confirm('Remover {{ member.user.username }} da mesa?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-danger btn-sm" type="submit">Remover</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h3>Código de convite</h3>
+      <p class="center"><span class="code-pill">{{ campaign.invite_code }}</span></p>
+      <p class="muted small">Quem tiver esse código pode entrar na campanha pelo painel.</p>
+      {% if is_master %}
+        <form method="post" action="{{ url_for('campaigns.new_code', campaign_id=campaign.id) }}"
+              onsubmit="return confirm('Gerar um novo código? O atual deixa de valer.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-ghost btn-block btn-sm" type="submit">Gerar novo código</button>
+        </form>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

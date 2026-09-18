@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="{{ url_for('main.index') }}">
+      <span class="brand-mark">🎲</span>
+      <span>{{ APP_NAME }}</span>
+    </a>
+    {% if current_user.is_authenticated %}
+      <nav class="topnav">
+        <a href="{{ url_for('main.dashboard') }}">Painel</a>
+        <a href="{{ url_for('characters.index') }}">Minhas fichas</a>
+        <a href="{{ url_for('systems.index') }}">Sistemas</a>
+      </nav>
+      <div class="topbar-user">
+        <a class="user-chip" href="{{ url_for('auth.account') }}" title="Minha conta">{{ current_user.username }}</a>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('auth.logout') }}">Sair</a>
+      </div>
+    {% else %}
+      <div class="topbar-user">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('auth.login') }}">Entrar</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('auth.register') }}">Criar conta</a>
+      </div>
+    {% endif %}
+  </div>
+</header>
+
+<main class="page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <span>{{ APP_NAME }} · {{ APP_TAGLINE }}</span>
+</footer>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

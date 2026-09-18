@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Sessões · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+{% if is_master %}
+  <div class="card">
+    <div class="card-head"><h2>Planejar uma sessão</h2></div>
+    <form method="post" action="{{ url_for('campaigns.session_create', campaign_id=campaign.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <div class="field">
+          <label for="title">Título</label>
+          <input type="text" id="title" name="title" placeholder="Ex.: A descida ao porão" required>
+        </div>
+        <div class="field">
+          <label for="scheduled_for">Data</label>
+          <input type="date" id="scheduled_for" name="scheduled_for">
+        </div>
+        <div class="field">
+          <label for="start_time">Horário</label>
+          <input type="time" id="start_time" name="start_time">
+        </div>
+        <div class="field" style="align-self:end">
+          <button class="btn btn-primary btn-block" type="submit">Criar e abrir roteiro</button>
+        </div>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Sessões</h2><span class="tag">{{ sessions|length }}</span></div>
+  {% if sessions %}
+    <div class="list">
+      {% for item in sessions %}
+        {% set answers = item.attendance.all() %}
+        {% set coming = answers|selectattr('status', 'equalto', 'vou')|list|length %}
+        {% set mine = item.attendance_of(current_user) %}
+        <a class="list-item" href="{{ url_for('campaigns.session_detail', campaign_id=campaign.id, session_id=item.id) }}">
+          <span style="flex:1">
+            <strong>#{{ item.number }} · {{ item.title }}</strong>
+            <span class="meta">
+              {{ item.scheduled_for.strftime('%d/%m/%Y') if item.scheduled_for else 'sem data' }}{% if item.start_time %} às {{ item.start_time }}{% endif %}
+              {% if item.synopsis %} · {{ item.synopsis|excerpt(70) }}{% endif %}
+            </span>
+            {% if item.beats and is_master %}
+              <span class="progress" style="display:block;margin-top:.4rem;max-width:220px">
+                <span style="display:block;height:100%;width:{{ item.progress }}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></span>
+              </span>
+            {% endif %}
+          </span>
+          <span class="tags">
+            {% if item.status == 'planejada' and player_count %}
+              <span class="tag {{ 'tag-ok' if coming == player_count else '' }}">{{ coming }}/{{ player_count }} vêm</span>
+            {% endif %}
+            {% if not is_master and item.status == 'planejada' and not mine %}
+              <span class="tag tag-gold">responda</span>
+            {% endif %}
+            {% if item.is_late %}<span class="tag tag-danger">atrasada</span>{% endif %}
+            <span class="tag {{ 'tag-ok' if item.status == 'realizada' else 'tag-gold' }}">{{ item.status }}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty"><p>Nenhuma sessão ainda.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

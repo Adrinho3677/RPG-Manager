@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Combate · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+{% if is_master %}
+  <div class="card">
+    <div class="card-head"><h2>Novo combate</h2></div>
+    <form method="post" action="{{ url_for('campaigns.encounter_create', campaign_id=campaign.id) }}" class="field-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field" style="margin:0">
+        <input type="text" name="name" placeholder="Ex.: Emboscada no beco" required>
+      </div>
+      <div class="field" style="margin:0">
+        <button class="btn btn-primary btn-block" type="submit">Criar rastreador</button>
+      </div>
+    </form>
+    <p class="hint">PJs e NPCs entram ligados à ficha: o dano dado aqui vai direto para o PV deles.
+      Criaturas entram como cópias com PV próprio (“Ghoul 1”, “Ghoul 2”).</p>
+  </div>
+{% endif %}
+
+{% for encounter in encounters %}
+  <div class="card" id="e{{ encounter.id }}" data-encounter
+       data-save-url="{{ url_for('campaigns.encounter_save', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+       data-add-url="{{ url_for('campaigns.encounter_add', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+       data-poll-url="{{ url_for('campaigns.encounter_poll', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+       data-editable="{{ 1 if is_master else 0 }}">
+    <div class="card-head">
+      <h2>{{ encounter.name }}</h2>
+      <span class="actions">
+        <span class="tag tag-gold">Rodada <strong data-round>{{ encounter.round_number }}</strong></span>
+        {% if is_master %}
+          <button class="btn btn-ghost btn-sm" type="button" data-action="prev">◀ Anterior</button>
+          <button class="btn btn-gold btn-sm" type="button" data-action="next">Próximo turno ▶</button>
+        {% else %}
+          <span class="muted small">atualiza sozinho</span>
+        {% endif %}
+      </span>
+    </div>
+
+    <div class="combat-messages" data-messages hidden></div>
+    <div data-list></div>
+
+    {% if is_master %}
+      <div class="combat-tools">
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" type="button" data-action="add">+ Combatente avulso</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-action="add-party">+ Trazer o grupo</button>
+          <button class="btn btn-primary btn-sm" type="button" data-action="save">Salvar</button>
+          <span class="save-state" data-state></span>
+        </div>
+        {% if roster %}
+          <div class="actions">
+            <select data-roster aria-label="Ficha para adicionar">
+              {% for character in roster %}
+                <option value="{{ character.id }}" data-kind="{{ character.kind }}">
+                  {{ character.name }} ({{ character.kind }})
+                </option>
+              {% endfor %}
+            </select>
+            <input type="number" min="1" max="20" value="1" data-quantity style="width:70px"
+                   title="Quantidade (só para criaturas)">
+            <button class="btn btn-gold btn-sm" type="button" data-action="add-sheet">Adicionar da ficha</button>
+          </div>
+        {% endif %}
+        <form method="post" style="margin-left:auto"
+              action="{{ url_for('campaigns.encounter_delete', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+              onsubmit="return confirm('Excluir este combate?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-danger btn-sm" type="submit">Excluir</button>
+        </form>
+      </div>
+    {% endif %}
+
+    <script type="application/json" data-payload>{{ states[encounter.id]|tojson }}</script>
+  </div>
+{% else %}
+  <div class="empty">
+    <p>Nenhum combate registrado.</p>
+    {% if is_master %}<p class="small">Crie um rastreador acima para controlar iniciativa e vida.</p>{% endif %}
+  </div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script id="dice-config" type="application/json">
+  {{ {'free_url': url_for('campaigns.roll_free', campaign_id=campaign.id),
+      'feed_url': url_for('campaigns.roll_feed', campaign_id=campaign.id),
+      'is_master': is_master}|tojson }}
+</script>
+<script src="{{ url_for('static', filename='js/dice.js') }}"></script>
+<script src="{{ url_for('static', filename='js/encounter.js') }}"></script>
+{% endblock %}

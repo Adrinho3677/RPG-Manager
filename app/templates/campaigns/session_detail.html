@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Sessão #{{ session.number }} · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+{% macro when(s) -%}
+  {{ s.scheduled_for.strftime('%d/%m/%Y') if s.scheduled_for else 'data a combinar' }}{% if s.start_time %} às {{ s.start_time }}{% endif %}
+{%- endmacro %}
+
+{% macro attendance_form(answer) %}
+  <form method="post" action="{{ url_for('campaigns.session_attendance', campaign_id=campaign.id, session_id=session.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="attendance-choices">
+      {% for value, label in attendance_statuses %}
+        <label class="choice {{ 'on' if answer and answer.status == value }}">
+          <input type="radio" name="status" value="{{ value }}" {% if answer and answer.status == value %}checked{% endif %}>
+          {{ label }}
+        </label>
+      {% endfor %}
+    </div>
+    <div class="field" style="margin:.5rem 0">
+      <input type="text" name="comment" maxlength="200" placeholder="Recado opcional (ex.: chego 20h)"
+             value="{{ answer.comment if answer else '' }}">
+    </div>
+    <button class="btn btn-gold btn-sm btn-block" type="submit">Responder</button>
+  </form>
+{% endmacro %}
+
+{% if is_master %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="split">
+      <div>
+        <div class="card">
+          <div class="field-row">
+            <div class="field" style="flex:2">
+              <label for="title">Título da sessão</label>
+              <input type="text" id="title" name="title" value="{{ session.title }}" required>
+            </div>
+            <div class="field">
+              <label for="number">Número</label>
+              <input type="number" id="number" name="number" value="{{ session.number }}">
+            </div>
+            <div class="field">
+              <label for="scheduled_for">Data</label>
+              <input type="date" id="scheduled_for" name="scheduled_for"
+                     value="{{ session.scheduled_for.isoformat() if session.scheduled_for else '' }}">
+            </div>
+            <div class="field">
+              <label for="start_time">Horário</label>
+              <input type="time" id="start_time" name="start_time" value="{{ session.start_time or '' }}">
+            </div>
+            <div class="field">
+              <label for="status">Situação</label>
+              <select id="status" name="status">
+                {% for value, label in statuses %}
+                  <option value="{{ value }}" {% if session.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Roteiro do mestre</h2><span class="tag tag-danger">só você vê</span></div>
+          <textarea name="plan" style="min-height:260px"
+                    placeholder="# Gancho&#10;- O que puxa os jogadores para a cena&#10;&#10;# Cenas&#10;## Confronto&#10;Estatísticas, DTs, pistas...">{{ session.plan }}</textarea>
+          <p class="hint">Aceita # títulos, - listas, **negrito** e *itálico*.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Cenas planejadas</h2>
+            <span class="tag">{{ session.progress }}% pronto</span></div>
+          <p class="muted small">Uma cena por linha. Durante a sessão, marque o que já aconteceu.</p>
+          <textarea name="beats" style="min-height:130px"
+                    placeholder="Chegada à vila&#10;Interrogatório do padre&#10;Emboscada na estrada">{% for beat in session.beats %}{{ beat.text }}
+{% endfor %}</textarea>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Sinopse para a mesa</h2><span class="tag tag-ok">jogadores veem</span></div>
+          <textarea name="synopsis" style="min-height:110px"
+                    placeholder="O que os jogadores sabem antes de começar.">{{ session.synopsis }}</textarea>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Resumo pós-sessão</h2><span class="tag tag-ok">jogadores veem</span></div>
+          <textarea name="recap" style="min-height:140px"
+                    placeholder="O que aconteceu de fato, ganchos abertos, XP distribuído...">{{ session.recap }}</textarea>
+        </div>
+      </div>
+
+      <aside>
+        <div class="card">
+          <h3>Quem vem</h3>
+          {% if roster %}
+            {% set confirmed = roster|selectattr('answer')|map(attribute='answer')|selectattr('status', 'equalto', 'vou')|list %}
+            <p class="muted small">{{ confirmed|length }} de {{ roster|length }} confirmaram.</p>
+            <div class="list">
+              {% for row in roster %}
+                <div class="list-item attendance-row">
+                  <span>
+                    <strong>{{ row.user.username }}</strong>
+                    {% if row.answer and row.answer.comment %}<span class="meta">{{ row.answer.comment }}</span>{% endif %}
+                  </span>
+                  {% if row.answer %}
+                    <span class="tag {{ 'tag-ok' if row.answer.status == 'vou' else ('tag-gold' if row.answer.status == 'talvez' else 'tag-danger') }}">{{ row.answer.label }}</span>
+                  {% else %}
+                    <span class="tag">sem resposta</span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="muted small">Ninguém entrou na mesa ainda.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h3>Checklist ao vivo</h3>
+          {% if session.beats %}
+            <div class="progress" style="margin-bottom:.7rem"><div style="width:{{ session.progress }}%"></div></div>
+            <div id="beats" data-url="{{ url_for('campaigns.session_beat', campaign_id=campaign.id, session_id=session.id) }}">
+              {% for beat in session.beats %}
+                <label class="beat {{ 'done' if beat.done }}">
+                  <input type="checkbox" data-index="{{ loop.index0 }}" {% if beat.done %}checked{% endif %}>
+                  <span class="beat-text">{{ beat.text }}</span>
+                </label>
+              {% endfor %}
+            </div>
+            <p class="hint">Marcar aqui salva na hora.</p>
+          {% else %}
+            <p class="muted small">Escreva as cenas ao lado e salve para virar checklist.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h3>Distribuir experiência</h3>
+          <p class="muted small">Soma para todos os personagens jogadores da campanha
+            e escreve uma linha no log de cada um.</p>
+          <div class="field">
+            <label for="xp_amount">Quanto</label>
+            <input type="number" id="xp_amount" form="xp-form" name="amount" placeholder="250">
+          </div>
+          <div class="field">
+            <label for="xp_note">Motivo</label>
+            <input type="text" id="xp_note" form="xp-form" name="note"
+                   placeholder="Sessão #{{ session.number }} — {{ session.title }}">
+          </div>
+          <button class="btn btn-gold btn-block btn-sm" type="submit" form="xp-form">
+            Distribuir para a mesa
+          </button>
+        </div>
+
+        <div class="card">
+          <h3>Atalhos</h3>
+          <a class="btn btn-ghost btn-block btn-sm" href="{{ url_for('campaigns.encounters', campaign_id=campaign.id) }}">Abrir combate</a>
+          <a class="btn btn-ghost btn-block btn-sm" style="margin-top:.4rem" href="{{ url_for('campaigns.notes', campaign_id=campaign.id) }}">Anotações</a>
+          <a class="btn btn-ghost btn-block btn-sm" style="margin-top:.4rem" href="{{ url_for('campaigns.cast', campaign_id=campaign.id) }}">NPCs e bestiário</a>
+        </div>
+      </aside>
+    </div>
+
+    <div class="sticky-save">
+      <span class="save-state">Sessão #{{ session.number }} · {{ when(session) }}</span>
+      <span class="actions">
+        <button class="btn btn-primary" type="submit">Salvar sessão</button>
+      </span>
+    </div>
+  </form>
+
+  {# Fica fora do formulário da sessão porque HTML não permite form aninhado;
+     os campos lá em cima se ligam a ele pelo atributo form="xp-form". #}
+  <form method="post" id="xp-form"
+        action="{{ url_for('campaigns.session_xp', campaign_id=campaign.id, session_id=session.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+
+  <form method="post" action="{{ url_for('campaigns.session_delete', campaign_id=campaign.id, session_id=session.id) }}"
+        onsubmit="return confirm('Excluir esta sessão?')" style="margin-top:1rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-danger btn-sm" type="submit">Excluir sessão</button>
+  </form>
+
+{% else %}
+  <div class="split">
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <h2>#{{ session.number }} · {{ session.title }}</h2>
+          <span class="tag tag-gold">{{ when(session) }}</span>
+        </div>
+        {% if session.synopsis %}
+          <div class="prose">{{ session.synopsis|rich }}</div>
+        {% else %}
+          <p class="muted">O mestre ainda não publicou a sinopse.</p>
+        {% endif %}
+      </div>
+      {% if session.recap %}
+        <div class="card">
+          <div class="card-head"><h2>O que aconteceu</h2></div>
+          <div class="prose">{{ session.recap|rich }}</div>
+        </div>
+      {% endif %}
+    </div>
+    <aside>
+      {% if session.status == 'planejada' %}
+        <div class="card">
+          <h3>Você vem?</h3>
+          {% if my_answer %}
+            <p class="muted small">Sua resposta: <strong>{{ my_answer.label }}</strong>. Dá para mudar.</p>
+          {% endif %}
+          {{ attendance_form(my_answer) }}
+        </div>
+      {% endif %}
+      <div class="card">
+        <h3>Quem vem</h3>
+        <div class="list">
+          {% for row in roster %}
+            <div class="list-item attendance-row">
+              <strong>{{ row.user.username }}</strong>
+              {% if row.answer %}
+                <span class="tag {{ 'tag-ok' if row.answer.status == 'vou' else ('tag-gold' if row.answer.status == 'talvez' else 'tag-danger') }}">{{ row.answer.label }}</span>
+              {% else %}
+                <span class="tag">sem resposta</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </aside>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var box = document.getElementById("beats");
+  if (!box) return;
+  box.addEventListener("change", function (event) {
+    var input = event.target;
+    if (input.type !== "checkbox") return;
+    api(box.dataset.url, { body: { index: Number(input.dataset.index) } }).then(function (data) {
+      if (!data.ok) return;
+      input.closest(".beat").classList.toggle("done", data.done);
+      var bar = document.querySelector(".progress > div");
+      if (bar) bar.style.width = data.progress + "%";
+    });
+  });
+})();
+</script>
+{% endblock %}

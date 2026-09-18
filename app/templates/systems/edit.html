@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Editar {{ system.name }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<form method="post" id="system-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="page-head">
+    <div>
+      <h1>Editar sistema</h1>
+      <p class="subtitle">Tudo aqui vira a estrutura das fichas criadas com este sistema.</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-ghost" href="{{ url_for('systems.detail', system_id=system.id) }}">Cancelar</a>
+      <button class="btn btn-primary" type="submit">Salvar sistema</button>
+    </div>
+  </div>
+
+  <input type="hidden" name="payload" id="payload" value="">
+
+  <div class="card">
+    <div class="field-row">
+      <div class="field">
+        <label for="name">Nome</label>
+        <input type="text" id="name" name="name" value="{{ system.name }}" required>
+      </div>
+      <div class="field">
+        <label for="roll_type">Como este sistema rola dados</label>
+        <select id="roll_type">
+          {% for value, label in roll_choices %}
+            <option value="{{ value }}" {% if system.roll.type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="description">Descrição</label>
+      <textarea id="description" name="description" style="min-height:70px">{{ system.description }}</textarea>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="attribute_display">Como exibir os atributos</label>
+        <select id="attribute_display">
+          {% for value, label in display_choices %}
+            <option value="{{ value }}" {% if (system.data or {}).get('attribute_display') == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="skill_mode">Como funcionam as perícias</label>
+        <select id="skill_mode">
+          {% for value, label in skill_mode_choices %}
+            <option value="{{ value }}" {% if (system.data or {}).get('skill_mode') == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Atributos</h2>
+      <button class="btn btn-gold btn-sm" type="button" data-add="attributes">+ Adicionar atributo</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Nome</th><th style="width:90px">Sigla</th><th style="width:90px">Padrão</th>
+              <th style="width:80px">Mín</th><th style="width:80px">Máx</th><th style="width:110px"></th></tr>
+        </thead>
+        <tbody id="rows-attributes"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Barras utilitárias</h2>
+      <button class="btn btn-gold btn-sm" type="button" data-add="bars">+ Adicionar barra</button>
+    </div>
+    <p class="muted small">Vida, mana, sanidade, esforço, munição, fome... o que a sua mesa precisar.
+      As colunas de descanso definem o que cada barra recupera quando o jogador clica
+      em “Descanso curto” ou “Descanso longo” na ficha.</p>
+    <p class="muted small"><strong>Máximo por fórmula</strong> recalcula o máximo sozinho quando o
+      atributo muda. Use siglas ou chaves dos atributos e campos numéricos, <code>+ - * /</code>,
+      parênteses, <code>min()</code> e <code>max()</code>. A divisão arredonda para baixo.
+      Ex.: <code>20 + VIG * 4</code>, <code>max(1, NEX / 5)</code>. Em D&amp;D, a sigla vale o modificador.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Nome</th><th style="width:80px">Sigla</th><th style="width:90px">Máx. inicial</th>
+              <th style="width:70px">Cor</th><th>Máximo por fórmula</th><th>Observação</th>
+              <th style="width:150px">Descanso curto</th><th style="width:150px">Descanso longo</th>
+              <th style="width:110px"></th></tr>
+        </thead>
+        <tbody id="rows-bars"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="training-card">
+    <div class="card-head">
+      <h2>Graus de treinamento</h2>
+      <button class="btn btn-gold btn-sm" type="button" data-add="training_levels">+ Adicionar grau</button>
+    </div>
+    <p class="muted small">Usado quando as perícias funcionam por grau de treino (ex.: Treinado +5).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th style="width:110px">Bônus</th><th style="width:110px"></th></tr></thead>
+        <tbody id="rows-training_levels"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Perícias</h2>
+      <button class="btn btn-gold btn-sm" type="button" data-add="skills">+ Adicionar perícia</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Nome</th><th style="width:190px">Atributo base</th>
+              <th style="width:110px">Valor padrão</th><th style="width:110px"></th></tr>
+        </thead>
+        <tbody id="rows-skills"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Carga e inventário</h2></div>
+    <div class="field-row">
+      <div class="field">
+        <label for="inv_mode">Como a carga funciona</label>
+        <select id="inv_mode">
+          {% for value, label in inventory_modes %}
+            <option value="{{ value }}"
+                    {% if ((system.data or {}).get('inventory') or {}).get('mode') == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="inv_unit">Unidade</label>
+        <input type="text" id="inv_unit" maxlength="12" placeholder="kg, lb, espaços"
+               value="{{ ((system.data or {}).get('inventory') or {}).get('unit', 'kg') }}">
+      </div>
+    </div>
+    <div class="field-row" id="inv-capacity">
+      <div class="field">
+        <label for="inv_base">Capacidade base</label>
+        <input type="number" id="inv_base" step="0.5"
+               value="{{ ((system.data or {}).get('inventory') or {}).get('capacity_base', 0) }}">
+      </div>
+      <div class="field">
+        <label for="inv_attr">+ atributo</label>
+        <select id="inv_attr"></select>
+      </div>
+      <div class="field">
+        <label for="inv_per">× por ponto</label>
+        <input type="number" id="inv_per" step="0.5"
+               value="{{ ((system.data or {}).get('inventory') or {}).get('capacity_per_point', 0) }}">
+      </div>
+      <div class="field">
+        <label for="inv_over">Limite de sobrecarga (×)</label>
+        <input type="number" id="inv_over" step="0.5" min="1"
+               value="{{ ((system.data or {}).get('inventory') or {}).get('overload_multiplier', 2) }}">
+      </div>
+    </div>
+    <p class="hint" id="inv-preview"></p>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Moedas</h2>
+      <button class="btn btn-gold btn-sm" type="button" data-add="currencies">+ Adicionar moeda</button>
+    </div>
+    <p class="muted small">Tibares, PO/PP/PC, reais... deixe vazio se a sua mesa não controla dinheiro.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th style="width:110px">Sigla</th><th style="width:110px"></th></tr></thead>
+        <tbody id="rows-currencies"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Nomes das seções da ficha</h2></div>
+    <p class="muted small">Cada sistema chama as coisas do seu jeito: rituais, disciplinas, feitiços...</p>
+    <div class="field-row">
+      {% set labels = (system.data or {}).get('labels') or {} %}
+      {% for key, fallback in default_labels.items() %}
+        <div class="field">
+          <label for="label_{{ key }}">
+            {% if key == 'attacks' %}Ataques
+            {% elif key == 'spells' %}Magias
+            {% elif key == 'spell_level' %}Nível da magia
+            {% else %}Habilidades{% endif %}
+          </label>
+          <input type="text" id="label_{{ key }}" data-label-key="{{ key }}" maxlength="40"
+                 value="{{ labels.get(key, fallback) }}">
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Campos de identidade</h2>
+      <button class="btn btn-gold btn-sm" type="button" data-add="meta_fields">+ Adicionar campo</button>
+    </div>
+    <p class="muted small">Classe, raça, origem, clã, NEX, ocupação... campos livres do topo da ficha.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th style="width:160px">Tipo</th><th style="width:110px"></th></tr></thead>
+        <tbody id="rows-meta_fields"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sticky-save">
+    <span class="save-state">Alterações afetam as fichas novas e os campos das existentes.</span>
+    <button class="btn btn-primary" type="submit">Salvar sistema</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script id="system-data" type="application/json">{{ payload|safe }}</script>
+<script src="{{ url_for('static', filename='js/system-editor.js') }}"></script>
+{% endblock %}

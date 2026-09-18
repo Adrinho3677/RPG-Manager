@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Importar sistema · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:640px">
+  <div class="card">
+    <h1>Importar sistema</h1>
+    <p class="muted">Use um arquivo <code>.grimorio.json</code> exportado por outro mestre
+      (botão <strong>Exportar</strong> na página de um sistema). Ele vira um sistema seu, que você pode editar.</p>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="file">Arquivo</label>
+        <input type="file" id="file" name="file" accept=".json,application/json">
+      </div>
+      <div class="field">
+        <label for="content">…ou cole o conteúdo</label>
+        <textarea id="content" name="content" style="min-height:180px;font-family:ui-monospace,Consolas,monospace;font-size:.8rem"
+                  placeholder='{"formato": "grimorio-sistema", ...}'>{{ content }}</textarea>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Importar</button>
+    </form>
+    <p class="hint" style="margin-top:1rem">Tudo passa pela mesma validação do editor: campos
+      estranhos são descartados e fórmulas inválidas aparecem como aviso.</p>
+  </div>
+</div>
+{% endblock %}

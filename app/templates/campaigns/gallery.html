@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Mapas · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+<div class="card">
+  <div class="card-head"><h2>Enviar imagem</h2></div>
+  <form method="post" enctype="multipart/form-data" class="field-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="file">Arquivo</label>
+      <input type="file" id="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp" required>
+    </div>
+    <div class="field">
+      <label for="title">Título</label>
+      <input type="text" id="title" name="title" maxlength="160" placeholder="Ex.: Planta da mansão">
+    </div>
+    {% if is_master %}
+      <div class="field">
+        <label for="visibility">Quem vê</label>
+        <select id="visibility" name="visibility">
+          <option value="mestre">Só o mestre (revelo depois)</option>
+          <option value="mesa">A mesa toda</option>
+        </select>
+      </div>
+    {% endif %}
+    <div class="field" style="align-self:end">
+      <button class="btn btn-primary btn-block" type="submit">Enviar</button>
+    </div>
+  </form>
+  <p class="hint">PNG, JPG, GIF ou WEBP, até 4 MB. O plano gratuito do PythonAnywhere tem pouco
+    espaço em disco — prefira imagens otimizadas.</p>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Mapas e imagens</h2><span class="tag">{{ assets|length }}</span></div>
+  {% if assets %}
+    <div class="gallery">
+      {% for asset in assets %}
+        <figure class="gallery-item {{ 'hidden-asset' if asset.visibility == 'mestre' }}">
+          <a href="{{ asset.url }}" target="_blank" rel="noopener">
+            <img src="{{ asset.url }}" alt="{{ asset.title or 'imagem' }}" loading="lazy">
+          </a>
+          <figcaption>
+            <strong>{{ asset.title or 'sem título' }}</strong>
+            <span class="muted small">{{ asset.owner.username }} · {{ (asset.size / 1024)|round|int }} KB</span>
+            <span class="actions">
+              {% if asset.visibility == 'mestre' %}<span class="tag tag-danger">só mestre</span>{% endif %}
+              {% if is_master %}
+                <form method="post" action="{{ url_for('uploads.gallery_toggle', campaign_id=campaign.id, asset_id=asset.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm {{ 'btn-gold' if asset.visibility == 'mestre' else 'btn-ghost' }}" type="submit">
+                    {{ '👁️ Revelar' if asset.visibility == 'mestre' else 'Esconder' }}
+                  </button>
+                </form>
+              {% endif %}
+              {% if is_master or asset.owner_id == current_user.id %}
+                <form method="post" action="{{ url_for('uploads.gallery_delete', campaign_id=campaign.id, asset_id=asset.id) }}"
+                      onsubmit="return confirm('Excluir esta imagem?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-danger btn-sm btn-icon" type="submit" title="Excluir">✕</button>
+                </form>
+              {% endif %}
+            </span>
+          </figcaption>
+        </figure>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty"><p>Nenhuma imagem ainda.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

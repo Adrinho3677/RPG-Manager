@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Novo sistema · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:560px">
+  <div class="card">
+    <h1>Criar sistema</h1>
+    <p class="muted">Comece do zero ou use um modelo existente como ponto de partida.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="name">Nome do sistema</label>
+        <input type="text" id="name" name="name" placeholder="Ex.: Ordem Paranormal da minha mesa" required>
+      </div>
+      <div class="field">
+        <label for="description">Descrição</label>
+        <textarea id="description" name="description" style="min-height:80px"
+                  placeholder="Para que serve, quais regras mudam..."></textarea>
+      </div>
+      <div class="field">
+        <label for="base">Basear em</label>
+        <select id="base" name="base">
+          <option value="0">Começar com uma base genérica</option>
+          {% for system in bases %}
+            <option value="{{ system.id }}">{{ system.name }}{% if system.is_preset %} (modelo pronto){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Criar e editar ficha</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

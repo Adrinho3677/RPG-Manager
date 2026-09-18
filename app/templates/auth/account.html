@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Minha conta · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card">
+    <h1>Minha conta</h1>
+    <p class="muted">{{ current_user.username }} · {{ current_user.email }}</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="current">Senha atual</label>
+        <input type="password" id="current" name="current" required autofocus
+               autocomplete="current-password">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="password">Senha nova</label>
+          <input type="password" id="password" name="password" required minlength="6"
+                 autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label for="confirm">Repita a senha nova</label>
+          <input type="password" id="confirm" name="confirm" required minlength="6"
+                 autocomplete="new-password">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Trocar senha</button>
+    </form>
+    <p class="hint" style="margin-top:1rem">Esqueceu a senha? O administrador do site pode gerar
+      uma temporária pelo comando <code>flask redefinir-senha</code>.</p>
+  </div>
+</div>
+{% endblock %}

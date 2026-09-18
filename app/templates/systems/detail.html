@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ system.name }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ system.name }}</h1>
+    <p class="subtitle">{{ system.description }}</p>
+    <div class="tags">
+      {% if system.is_preset %}<span class="tag tag-gold">modelo pronto</span>{% endif %}
+      <span class="tag tag-accent">{{ system.roll.label }}</span>
+    </div>
+  </div>
+  <div class="actions">
+    {% if system.editable_by(current_user) %}
+      <a class="btn btn-primary" href="{{ url_for('systems.edit', system_id=system.id) }}">Editar</a>
+    {% endif %}
+    <form method="post" action="{{ url_for('systems.duplicate', system_id=system.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-gold" type="submit">Duplicar</button>
+    </form>
+    <a class="btn btn-ghost" href="{{ url_for('systems.export', system_id=system.id) }}">⬇️ Exportar</a>
+    <a class="btn btn-ghost" href="{{ url_for('systems.index') }}">Voltar</a>
+  </div>
+</div>
+
+{% for warning in warnings %}
+  <div class="flash flash-warning" style="margin-bottom:.6rem">{{ warning }}</div>
+{% endfor %}
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h2>Atributos</h2><span class="tag">{{ system.attributes|length }}</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th>Sigla</th><th>Padrão</th><th>Faixa</th></tr></thead>
+        <tbody>
+          {% for attribute in system.attributes %}
+            <tr>
+              <td>{{ attribute.name }}</td>
+              <td><span class="tag">{{ attribute.abbr }}</span></td>
+              <td>{{ attribute.default }}</td>
+              <td class="muted">{{ attribute.min }} a {{ attribute.max }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Barras utilitárias</h2><span class="tag">{{ system.bars|length }}</span></div>
+    <div class="list">
+      {% for bar in system.bars %}
+        <div class="list-item">
+          <span>
+            <strong>{{ bar.name }} <span class="muted">({{ bar.abbr }})</span></strong>
+            {% if bar.max_formula %}<span class="meta">máximo = <code>{{ bar.max_formula }}</code></span>{% endif %}
+            {% if bar.formula %}<span class="meta">{{ bar.formula }}</span>{% endif %}
+            <span class="meta">
+              descanso curto: {{ (bar.get('rest_short') or {}).get('mode', 'none')|replace('none', 'nada')|replace('full', 'tudo')|replace('half', 'metade')|replace('amount', '+' ~ (bar.get('rest_short') or {}).get('value', 0))|replace('percent', '+' ~ (bar.get('rest_short') or {}).get('value', 0) ~ '%') }}
+              · longo: {{ (bar.get('rest_long') or {}).get('mode', 'full')|replace('none', 'nada')|replace('full', 'tudo')|replace('half', 'metade')|replace('amount', '+' ~ (bar.get('rest_long') or {}).get('value', 0))|replace('percent', '+' ~ (bar.get('rest_long') or {}).get('value', 0) ~ '%') }}
+            </span>
+          </span>
+          <span class="tag" style="border-color:{{ bar.color }};color:{{ bar.color }}">máx. {{ bar.default_max }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Perícias</h2><span class="tag">{{ system.skills|length }}</span></div>
+  <div class="grid grid-4">
+    {% for skill in system.skills %}
+      <div class="list-item">
+        <span><strong>{{ skill.name }}</strong>
+          <span class="meta">{{ skill.attr|upper }}{% if skill.default %} · base {{ skill.default }}{% endif %}</span>
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% set inv = (system.data or {}).get('inventory') or {} %}
+{% set coins = (system.data or {}).get('currencies') or [] %}
+{% set labels = (system.data or {}).get('labels') or {} %}
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h2>Carga</h2></div>
+    {% if inv.get('mode', 'none') == 'none' %}
+      <p class="muted small">Este sistema não controla peso nem espaços.</p>
+    {% else %}
+      <p>
+        Capacidade = <strong>{{ inv.get('capacity_base', 0)|number }}</strong>
+        {% if inv.get('capacity_attr') %}
+          + <strong>{{ inv.get('capacity_attr')|upper }}</strong>
+          × {{ inv.get('capacity_per_point', 0)|number }}
+        {% endif %}
+        <span class="muted">{{ inv.get('unit', 'kg') }}</span>
+      </p>
+      <p class="muted small">
+        Medido por {{ 'espaços' if inv.get('mode') == 'slots' else 'peso' }}.
+        Acima de {{ inv.get('overload_multiplier', 2)|number }}× a capacidade a ficha
+        marca que o personagem passou do limite.
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Moedas e seções</h2></div>
+    <div class="tags" style="margin-bottom:.6rem">
+      {% for coin in coins %}
+        <span class="tag tag-gold">{{ coin.name }} ({{ coin.abbr }})</span>
+      {% else %}
+        <span class="muted small">Sem controle de dinheiro.</span>
+      {% endfor %}
+    </div>
+    <div class="tags">
+      <span class="tag tag-accent">{{ labels.get('attacks', 'Ataques') }}</span>
+      <span class="tag tag-accent">{{ labels.get('spells', 'Magias') }}</span>
+      <span class="tag tag-accent">{{ labels.get('abilities', 'Habilidades') }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Campos de identidade</h2></div>
+  <div class="tags">
+    {% for field in system.meta_fields %}
+      <span class="tag tag-accent">{{ field.name }}</span>
+    {% else %}
+      <span class="muted small">Nenhum campo extra.</span>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ APP_NAME }} · {{ APP_TAGLINE }}{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Sua mesa inteira em um lugar só</h1>
+  <p>
+    Fichas que se adaptam ao sistema que você joga, planejamento de sessões para o mestre,
+    anotações da campanha, linha do tempo e rastreador de combate.
+  </p>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('auth.register') }}">Começar de graça</a>
+    <a class="btn btn-ghost" href="{{ url_for('auth.login') }}">Já tenho conta</a>
+  </div>
+</section>
+
+<section class="grid grid-3" style="margin-bottom:1.5rem">
+  <div class="feature">
+    <div class="ico">🧬</div>
+    <h3>Ficha que você molda</h3>
+    <p class="muted small">Escolha o modelo do sistema e adicione atributos, barras (vida, mana,
+      sanidade, o que for) e perícias novas direto na ficha.</p>
+  </div>
+  <div class="feature">
+    <div class="ico">🗺️</div>
+    <h3>Mestre no controle</h3>
+    <p class="muted small">Roteiro de sessão com checklist de cenas, anotações secretas,
+      NPCs, linha do tempo e código de convite para a mesa.</p>
+  </div>
+  <div class="feature">
+    <div class="ico">🎲</div>
+    <h3>Rolagem certa</h3>
+    <p class="muted small">Cada sistema rola do seu jeito: d20 + mod, vários d20 pegando o maior,
+      d100 percentual ou parada de d10.</p>
+  </div>
+</section>
+
+<div class="card">
+  <div class="card-head"><h2>Modelos prontos</h2><span class="muted small">e você pode criar o seu</span></div>
+  <div class="grid grid-3">
+    {% for system in systems %}
+      <div class="feature">
+        <h3>{{ system.name }}</h3>
+        <p class="muted small">{{ system.description }}</p>
+        <div class="tags">
+          <span class="tag">{{ system.attributes|length }} atributos</span>
+          <span class="tag">{{ system.bars|length }} barras</span>
+          <span class="tag">{{ system.skills|length }} perícias</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

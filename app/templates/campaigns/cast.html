@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Elenco · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+{% set npcs = cast|selectattr('kind', 'equalto', 'npc')|list %}
+{% set creatures = cast|selectattr('kind', 'equalto', 'criatura')|list %}
+
+{% macro to_combat(character) %}
+  {% if is_master and encounters %}
+    <div class="to-combat" data-to-combat
+         data-character="{{ character.id }}" data-kind="{{ character.kind }}">
+      <select data-encounter-choice aria-label="Combate">
+        {% for encounter in encounters %}
+          <option value="{{ url_for('campaigns.encounter_add', campaign_id=campaign.id, encounter_id=encounter.id) }}">
+            {{ encounter.name }}
+          </option>
+        {% endfor %}
+      </select>
+      {% if character.kind == 'criatura' %}
+        <input type="number" min="1" max="20" value="1" data-quantity title="Quantas cópias" style="width:64px">
+      {% endif %}
+      <button class="btn btn-gold btn-sm" type="button" data-send>⚔️ Ao combate</button>
+      <span class="muted small" data-result></span>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Bestiário</h2>
+    {% if is_master %}
+      <a class="btn btn-primary btn-sm" href="{{ url_for('characters.create', campanha=campaign.id) }}">+ Criar ficha</a>
+    {% endif %}
+  </div>
+  <p class="muted small">Criaturas são modelos: cada vez que entram no combate viram cópias
+    com PV próprio, e a ficha original fica intacta.</p>
+  {% if creatures %}
+    <div class="grid grid-3">
+      {% for character in creatures %}
+        <div class="card campaign-card" style="box-shadow:none">
+          <div class="card-head" style="margin-bottom:.4rem">
+            <a href="{{ url_for('characters.detail', character_id=character.id) }}"><h3>{{ character.name }}</h3></a>
+            <span class="tag tag-danger">criatura</span>
+          </div>
+          <p class="muted small">{{ character.concept or 'sem descrição' }}</p>
+          {% if not character.visible_to_players %}<span class="tag">oculta dos jogadores</span>{% endif %}
+          {{ to_combat(character) }}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty"><p>Nenhuma criatura cadastrada.</p></div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>NPCs</h2></div>
+  {% if npcs %}
+    <div class="grid grid-3">
+      {% for character in npcs %}
+        <div class="card campaign-card" style="box-shadow:none">
+          <div class="card-head" style="margin-bottom:.4rem">
+            <a href="{{ url_for('characters.detail', character_id=character.id) }}"><h3>{{ character.name }}</h3></a>
+            <span class="tag tag-accent">npc</span>
+          </div>
+          <p class="muted small">{{ character.concept or 'sem descrição' }}</p>
+          {% if not character.visible_to_players %}<span class="tag">oculto dos jogadores</span>{% endif %}
+          {{ to_combat(character) }}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty"><p>Nenhum NPC cadastrado.</p></div>
+  {% endif %}
+</div>
+
+{% if is_master and not encounters %}
+  <p class="hint">Para mandar alguém ao combate, crie um rastreador na aba
+    <a href="{{ url_for('campaigns.encounters', campaign_id=campaign.id) }}">Combate</a>.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll("[data-to-combat]").forEach(function (box) {
+    var button = box.querySelector("[data-send]");
+    var result = box.querySelector("[data-result]");
+    button.addEventListener("click", function () {
+      var quantity = box.querySelector("[data-quantity]");
+      button.disabled = true;
+      result.textContent = "enviando…";
+      api(box.querySelector("[data-encounter-choice]").value, {
+        body: { character_id: Number(box.dataset.character),
+                quantity: quantity ? Number(quantity.value) || 1 : 1 }
+      }).then(function (data) {
+        button.disabled = false;
+        result.textContent = data.ok
+          ? ((data.messages && data.messages[0]) || "adicionado ✓")
+          : "não consegui";
+      }).catch(function () {
+        button.disabled = false;
+        result.textContent = "sem conexão";
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

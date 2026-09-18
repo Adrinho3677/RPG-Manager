@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Sistemas · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Sistemas</h1>
+    <p class="subtitle">O modelo define quais atributos, barras e perícias a ficha terá.</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('systems.import_system') }}">⬆️ Importar</a>
+    <a class="btn btn-primary" href="{{ url_for('systems.create') }}">+ Criar sistema</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Modelos prontos</h2>
+    <span class="muted small">duplique para poder editar</span></div>
+  <div class="grid grid-3">
+    {% for system in presets %}
+      <div class="feature">
+        <h3>{{ system.name }}</h3>
+        <p class="muted small">{{ system.description }}</p>
+        <div class="tags" style="margin-bottom:.7rem">
+          <span class="tag">{{ system.attributes|length }} atributos</span>
+          <span class="tag">{{ system.bars|length }} barras</span>
+          <span class="tag">{{ system.skills|length }} perícias</span>
+        </div>
+        <div class="actions">
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('systems.detail', system_id=system.id) }}">Ver</a>
+          <form method="post" action="{{ url_for('systems.duplicate', system_id=system.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-gold btn-sm" type="submit">Duplicar e editar</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Meus sistemas</h2></div>
+  {% if mine %}
+    <div class="grid grid-3">
+      {% for system in mine %}
+        <div class="feature">
+          <h3>{{ system.name }}</h3>
+          <p class="muted small">{{ system.description|excerpt(110) or 'Sem descrição.' }}</p>
+          <div class="tags" style="margin-bottom:.7rem">
+            <span class="tag">{{ system.attributes|length }} atributos</span>
+            <span class="tag">{{ system.bars|length }} barras</span>
+            <span class="tag">{{ system.skills|length }} perícias</span>
+            {% if system.campaigns.count() %}<span class="tag tag-accent">{{ system.campaigns.count() }} campanha(s)</span>{% endif %}
+          </div>
+          <div class="actions">
+            <a class="btn btn-primary btn-sm" href="{{ url_for('systems.edit', system_id=system.id) }}">Editar</a>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('systems.detail', system_id=system.id) }}">Ver</a>
+            <form method="post" action="{{ url_for('systems.delete', system_id=system.id) }}"
+                  onsubmit="return confirm('Excluir este sistema?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-danger btn-sm" type="submit">Excluir</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <p>Você ainda não tem um sistema próprio. Duplique um modelo pronto ou comece do zero.</p>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('systems.create') }}">Criar sistema</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

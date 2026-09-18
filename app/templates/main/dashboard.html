@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Painel · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Olá, {{ current_user.username }}</h1>
+    <p class="subtitle">O que vamos jogar hoje?</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('campaigns.create') }}">+ Nova campanha</a>
+    <a class="btn btn-ghost" href="{{ url_for('characters.create') }}">+ Nova ficha</a>
+  </div>
+</div>
+
+<div class="split">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Campanhas que eu mestro</h2></div>
+      {% if mastering %}
+        <div class="grid grid-2">
+          {% for campaign in mastering %}
+            <a class="card campaign-card" href="{{ url_for('campaigns.overview', campaign_id=campaign.id) }}">
+              <h3>{{ campaign.name }}</h3>
+              <p class="muted small">{{ campaign.tagline or campaign.system.name }}</p>
+              <div class="tags">
+                <span class="tag tag-accent">{{ campaign.system.name }}</span>
+                <span class="tag">{{ campaign.members.count() }} na mesa</span>
+                <span class="tag {{ 'tag-ok' if campaign.status == 'ativa' else '' }}">{{ campaign.status }}</span>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">
+          <p>Você ainda não mestra nenhuma campanha.</p>
+          <a class="btn btn-primary btn-sm" href="{{ url_for('campaigns.create') }}">Criar a primeira</a>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Campanhas que eu jogo</h2></div>
+      {% if playing %}
+        <div class="grid grid-2">
+          {% for campaign in playing %}
+            <a class="card campaign-card" href="{{ url_for('campaigns.overview', campaign_id=campaign.id) }}">
+              <h3>{{ campaign.name }}</h3>
+              <p class="muted small">Mestre: {{ campaign.master.username }}</p>
+              <div class="tags"><span class="tag tag-accent">{{ campaign.system.name }}</span></div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty"><p>Use um código de convite ao lado para entrar em uma mesa.</p></div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Minhas fichas</h2>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.index') }}">Ver todas</a>
+      </div>
+      {% if characters %}
+        <div class="list">
+          {% for character in characters %}
+            <a class="list-item" href="{{ url_for('characters.detail', character_id=character.id) }}">
+              <span>
+                <strong>{{ character.name }}</strong>
+                <span class="meta">{{ character.system.name }}{% if character.campaign %} · {{ character.campaign.name }}{% endif %}</span>
+              </span>
+              <span class="tag">{{ character.concept|excerpt(28) or 'ficha' }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty"><p>Nenhuma ficha ainda.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h3>Entrar em uma mesa</h3>
+      <p class="muted small">Peça o código de convite ao mestre.</p>
+      <form method="post" action="{{ url_for('campaigns.join') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+          <input type="text" name="invite_code" placeholder="A1B2C3" maxlength="12" required
+                 style="text-transform:uppercase;letter-spacing:.15em;text-align:center">
+        </div>
+        <button class="btn btn-gold btn-block" type="submit">Entrar na campanha</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Próximas sessões</h3>
+      {% if upcoming %}
+        <div class="list">
+          {% for item in upcoming %}
+            <a class="list-item" href="{{ url_for('campaigns.session_detail', campaign_id=item.campaign_id, session_id=item.id) }}">
+              <span>
+                <strong>#{{ item.number }} · {{ item.title }}</strong>
+                <span class="meta">{{ item.campaign.name }}</span>
+              </span>
+              <span class="tags">
+                {% set answer = item.attendance_of(current_user) %}
+                {% if item.campaign.master_id != current_user.id %}
+                  {% if answer %}
+                    <span class="tag {{ 'tag-ok' if answer.status == 'vou' else ('tag-gold' if answer.status == 'talvez' else 'tag-danger') }}">{{ answer.label }}</span>
+                  {% else %}
+                    <span class="tag tag-gold">responda</span>
+                  {% endif %}
+                {% endif %}
+                <span class="tag {{ 'tag-danger' if item.is_late else 'tag-gold' }}">
+                  {{ item.scheduled_for.strftime('%d/%m') if item.scheduled_for else 'sem data' }}{% if item.start_time %} {{ item.start_time }}{% endif %}
+                </span>
+              </span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted small">Nada agendado. Que tal marcar a próxima?</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Sistemas</h3>
+      <p class="muted small">Modelos de ficha prontos ou criados por você.</p>
+      <a class="btn btn-ghost btn-block" href="{{ url_for('systems.index') }}">Gerenciar sistemas</a>
+    </div>
+  </aside>
+</div>
+{% endblock %}

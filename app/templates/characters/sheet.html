@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+{% block title %}{{ character.name }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+{% set pool_roll = sheet.roll.type in ('pool_d10', 'd6_pool') %}
+{% set dice_by_attr = sheet.roll.type in ('keep_highest_d20', 'pool_d10', 'd6_pool') %}
+
+<div class="sheet-header">
+  {% if character.avatar_url %}
+    <img class="avatar" src="{{ character.avatar_url }}" alt="">
+  {% else %}
+    <div class="avatar-fallback">{{ '🎭' if character.kind != 'criatura' else '👹' }}</div>
+  {% endif %}
+  <div style="flex:1;min-width:200px">
+    <h1 style="margin-bottom:.15rem">{{ character.name }}</h1>
+    <p class="muted small" style="margin:0">{{ character.concept or 'sem conceito' }}</p>
+    <div class="tags" style="margin-top:.4rem">
+      <span class="tag tag-accent">{{ character.system.name }}</span>
+      <span class="tag">{{ character.kind }}</span>
+      {% if character.campaign %}
+        <a class="tag tag-gold" href="{{ url_for('campaigns.overview', campaign_id=character.campaign_id) }}">{{ character.campaign.name }}</a>
+      {% endif %}
+      <span class="tag">{{ sheet.roll.label }}</span>
+    </div>
+    <div class="tags header-conditions" data-header-conditions style="margin-top:.4rem">
+      {% for c in sheet.conditions %}
+        <span class="tag tag-danger">{{ c.name }}{% if c.rounds %} · {{ c.rounds }} rod.{% endif %}</span>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="actions">
+    {% if character.campaign %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.overview', campaign_id=character.campaign_id) }}">Campanha</a>
+    {% endif %}
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.print_sheet', character_id=character.id) }}"
+       target="_blank" rel="noopener">🖨️ Imprimir / PDF</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.index') }}">Minhas fichas</a>
+  </div>
+</div>
+
+{% if can_edit %}
+  <details class="card" style="margin-bottom:1rem">
+    <summary style="cursor:pointer;font-weight:700">Identidade, retrato e campanha</summary>
+    <form method="post" enctype="multipart/form-data"
+          action="{{ url_for('characters.identity', character_id=character.id) }}" style="margin-top:.9rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row">
+        <div class="field">
+          <label for="name">Nome</label>
+          <input type="text" id="name" name="name" value="{{ character.name }}" required>
+        </div>
+        <div class="field">
+          <label for="kind">Tipo</label>
+          <select id="kind" name="kind">
+            {% for value in ['pj', 'npc', 'criatura'] %}
+              <option value="{{ value }}" {% if character.kind == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="campaign_id">Campanha</label>
+          <select id="campaign_id" name="campaign_id">
+            <option value="">— nenhuma —</option>
+            {% for membership in current_user.memberships %}
+              {% if membership.campaign and membership.campaign.system_id == character.system_id %}
+                <option value="{{ membership.campaign.id }}"
+                        {% if character.campaign_id == membership.campaign.id %}selected{% endif %}>
+                  {{ membership.campaign.name }}
+                </option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          <p class="hint">Só aparecem campanhas do mesmo sistema.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="concept">Conceito</label>
+        <input type="text" id="concept" name="concept" value="{{ character.concept }}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="avatar_file">Enviar retrato</label>
+          <input type="file" id="avatar_file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp">
+          <p class="hint">PNG, JPG, GIF ou WEBP, até 4 MB.</p>
+        </div>
+        <div class="field">
+          <label for="avatar_url">…ou link de uma imagem</label>
+          <input type="text" id="avatar_url" name="avatar_url" value="{{ character.avatar_url }}"
+                 placeholder="https://...">
+          {% if character.avatar_url %}
+            <label class="check" style="margin-top:.4rem">
+              <input type="checkbox" name="remove_avatar"> Remover retrato
+            </label>
+          {% endif %}
+        </div>
+      </div>
+      <div class="field">
+        <label class="check">
+          <input type="checkbox" name="visible_to_players" {% if character.visible_to_players %}checked{% endif %}>
+          Visível para os jogadores da campanha
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary btn-sm" type="submit">Salvar identidade</button>
+      </div>
+    </form>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0">
+    <div class="actions">
+      <form method="post" action="{{ url_for('characters.duplicate', character_id=character.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-sm" type="submit">Duplicar ficha</button>
+      </form>
+      <form method="post" action="{{ url_for('characters.delete', character_id=character.id) }}"
+            onsubmit="return confirm('Excluir a ficha de {{ character.name }}?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-danger btn-sm" type="submit">Excluir ficha</button>
+      </form>
+    </div>
+  </details>
+{% endif %}
+
+<div class="stale-banner" data-stale-banner hidden>
+  <span><strong>Esta ficha mudou em outro lugar</strong> — talvez o mestre no combate.
+    O que você digita continua sendo salvo, mas os botões de descanso e de adicionar
+    campos ficam bloqueados até recarregar.</span>
+  <button class="btn btn-gold btn-sm" type="button" data-reload>Recarregar ficha</button>
+</div>
+
+{# novalidate: com abas, um campo inválido numa aba escondida faria o navegador
+   recusar o envio sem mostrar nada. O servidor já limita todos os valores. #}
+<form method="post" id="sheet-form" novalidate data-editable="{{ 1 if can_edit else 0 }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="version" value="{{ character.version }}" data-version>
+
+  <nav class="sheet-tabs" data-tabs role="tablist" hidden>
+    <button type="button" role="tab" data-tab-button="combate">⚔️ Combate</button>
+    <button type="button" role="tab" data-tab-button="pericias">🎯 Perícias</button>
+    <button type="button" role="tab" data-tab-button="poderes">✨ {{ sheet.labels.spells }}</button>
+    <button type="button" role="tab" data-tab-button="inventario">🎒 Inventário</button>
+    <button type="button" role="tab" data-tab-button="evolucao">📈 Evolução</button>
+    <button type="button" role="tab" data-tab-button="personagem">📜 Personagem</button>
+  </nav>
+
+  <fieldset {% if not can_edit %}disabled{% endif %} style="border:none;padding:0;margin:0">
+
+  {# ================================================================ COMBATE #}
+  <section class="sheet-tab" data-tab="combate" role="tabpanel">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Condições ativas</h2>
+      {% if can_edit %}
+        <span class="actions quick-conditions">
+          <span class="muted small">atalhos:</span>
+          {% for quick in ['Sangrando', 'Atordoado', 'Caído', 'Enfeitiçado', 'Envenenado',
+                           'Amedrontado', 'Cego', 'Surdo', 'Exausto', 'Agarrado'] %}
+            <button class="btn btn-ghost btn-sm" type="button" data-quick-condition="{{ quick }}">{{ quick }}</button>
+          {% endfor %}
+          <button class="btn btn-gold btn-sm" type="button" data-add-item="conditions">+ Outra</button>
+        </span>
+      {% endif %}
+    </div>
+    <p class="hint">Rodadas 0 = sem prazo. Com duração, o combate desconta uma por rodada e remove quando acaba.</p>
+    <div id="conditions-rows"></div>
+    <input type="hidden" name="conditions" id="conditions-input">
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Barras</h2>
+      {% if can_edit %}
+        <span class="actions">
+          <button class="btn btn-ghost btn-sm" type="submit" name="__action" value="rest:short" data-full-submit
+                  title="Recupera o que o sistema define para um descanso curto">😴 Descanso curto</button>
+          <button class="btn btn-gold btn-sm" type="submit" name="__action" value="rest:long" data-full-submit
+                  title="Recupera o que o sistema define para um descanso longo">🌙 Descanso longo</button>
+        </span>
+      {% endif %}
+    </div>
+    <div class="grid grid-3">
+      {% for bar in sheet.bars %}
+        <div class="bar-box" data-bar="{{ bar.key }}">
+          <div class="bar-top">
+            <span class="bar-name" style="color:{{ bar.color }}">{{ bar.name }}</span>
+            <span class="tags">
+              <span class="tag">{{ bar.abbr }}</span>
+              {% if bar.custom and can_edit %}
+                <button class="btn btn-danger btn-sm btn-icon" type="submit" data-full-submit
+                        name="__action" value="remove:bar:{{ bar.key }}" title="Remover barra">✕</button>
+              {% endif %}
+            </span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" data-fill style="width:{{ bar.percent }}%;background:{{ bar.color }}"></div>
+          </div>
+          <div class="bar-inputs">
+            <input type="number" name="bar__{{ bar.key }}__current" value="{{ bar.current }}" data-current>
+            <span>/</span>
+            <input type="number" name="bar__{{ bar.key }}__max" value="{{ bar.max }}" data-max min="0"
+                   {% if bar.max_formula %}readonly class="auto-max" title="Calculado: {{ bar.max_formula }}"{% endif %}>
+            <span class="muted small">temp</span>
+            <input type="number" name="bar__{{ bar.key }}__temp" value="{{ bar.temp }}" style="width:58px" data-temp>
+          </div>
+          {% if can_edit %}
+            <div class="bar-quick">
+              <button class="btn btn-ghost btn-sm" type="button" data-step="-5">-5</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-step="-1">-1</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-step="1">+1</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-step="5">+5</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-step="full">cheio</button>
+            </div>
+          {% endif %}
+          {% if bar.max_formula %}
+            <p class="hint">máximo = <code>{{ bar.max_formula }}</code></p>
+          {% endif %}
+          <p class="hint formula-error" data-formula-error {% if not bar.formula_error %}hidden{% endif %}>
+            ⚠️ {{ bar.formula_error or '' }}
+          </p>
+          {% if bar.formula %}<p class="hint">{{ bar.formula }}</p>{% endif %}
+          <p class="hint">descanso: curto {{ bar.rest_short|lower }} · longo {{ bar.rest_long|lower }}</p>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if can_edit %}
+      <details style="margin-top:1rem">
+        <summary class="muted small" style="cursor:pointer">+ Adicionar barra só nesta ficha</summary>
+        <div class="field-row" style="margin-top:.6rem">
+          <div class="field"><label>Nome</label><input type="text" name="new_bar_name" placeholder="Ex.: Munição"></div>
+          <div class="field"><label>Sigla</label><input type="text" name="new_bar_abbr" maxlength="6" placeholder="MUN"></div>
+          <div class="field"><label>Máximo</label><input type="number" name="new_bar_max" value="10"></div>
+          <div class="field"><label>Máximo por fórmula</label>
+            <input type="text" name="new_bar_max_formula" placeholder="opcional, ex.: 2 + VIG"></div>
+          <div class="field"><label>Cor</label><input type="color" name="new_bar_color" value="#c0392b" style="padding:2px;height:38px"></div>
+          <div class="field"><label>Observação</label><input type="text" name="new_bar_formula" placeholder="texto livre"></div>
+          <div class="field" style="align-self:end">
+            <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_bar" data-full-submit>Adicionar</button>
+          </div>
+        </div>
+      </details>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Atributos</h2>
+      <span class="muted small">
+        {% if sheet.display == 'modifier' %}valor 10 = +0
+        {% elif sheet.display == 'percent' %}valores percentuais
+        {% elif sheet.display == 'dots' %}pontos de 0 a 5
+        {% elif sheet.display == 'raw_modifier' %}o valor já é o modificador
+        {% endif %}
+      </span>
+    </div>
+    <div class="attr-grid">
+      {% for attribute in sheet.attributes %}
+        <div class="attr">
+          {% if attribute.custom and can_edit %}
+            <button class="btn btn-danger btn-sm btn-icon remove-field" type="submit" data-full-submit
+                    name="__action" value="remove:attribute:{{ attribute.key }}" title="Remover atributo">✕</button>
+          {% endif %}
+          {% if can_edit %}
+            <button class="btn btn-ghost btn-sm btn-icon roll-attr" type="button"
+                    data-roll data-label="{{ attribute.name }}"
+                    data-dice="{{ attribute.effective if dice_by_attr else 1 }}"
+                    data-bonus="{{ 0 if dice_by_attr else attribute.effective }}"
+                    data-target="{{ attribute.value }}" title="Rolar {{ attribute.name }}">🎲</button>
+          {% endif %}
+          <div class="attr-name">{{ attribute.abbr or attribute.name }}</div>
+          <input type="number" name="attr__{{ attribute.key }}" value="{{ attribute.value }}"
+                 min="{{ attribute.min }}" max="{{ attribute.max }}"
+                 data-attr="{{ attribute.key }}" data-display="{{ sheet.display }}">
+          <div class="attr-mod" data-mod-for="{{ attribute.key }}">
+            {% if sheet.display == 'modifier' %}{{ attribute.modifier|signed }}
+            {% elif sheet.display == 'percent' %}{{ (attribute.value // 2) }} / {{ (attribute.value // 5) }}
+            {% elif sheet.display == 'dots' %}{{ '●' * attribute.value }}{{ '○' * (attribute.max - attribute.value if attribute.max >= attribute.value else 0) }}
+            {% else %}{{ attribute.name }}{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if can_edit %}
+      <details style="margin-top:1rem">
+        <summary class="muted small" style="cursor:pointer">+ Adicionar atributo só nesta ficha</summary>
+        <div class="field-row" style="margin-top:.6rem">
+          <div class="field"><label>Nome</label><input type="text" name="new_attr_name" placeholder="Ex.: Sorte"></div>
+          <div class="field"><label>Sigla</label><input type="text" name="new_attr_abbr" maxlength="6" placeholder="SOR"></div>
+          <div class="field"><label>Valor</label><input type="number" name="new_attr_value" value="1"></div>
+          <div class="field"><label>Mín</label><input type="number" name="new_attr_min" value="0"></div>
+          <div class="field"><label>Máx</label><input type="number" name="new_attr_max" value="5"></div>
+          <div class="field" style="align-self:end">
+            <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_attribute" data-full-submit>Adicionar</button>
+          </div>
+        </div>
+      </details>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ sheet.labels.attacks }}</h2>
+      {% if can_edit %}<button class="btn btn-gold btn-sm" type="button" data-add-item="attacks">+ Adicionar ataque</button>{% endif %}
+    </div>
+    <p class="muted small">Escolha a perícia do teste e escreva o dano como fórmula
+      (<code>1d8+3</code>, <code>2d6</code>) — os botões 🎲 rolam cada um.</p>
+    <div id="attacks-rows"></div>
+    <input type="hidden" name="attacks" id="attacks-input">
+  </div>
+
+  </section>
+
+  {# =============================================================== PERÍCIAS #}
+  <section class="sheet-tab" data-tab="pericias" role="tabpanel">
+  <div class="card">
+    <div class="card-head"><h2>Perícias</h2><span class="tag">{{ sheet.skills|length }}</span></div>
+    <div class="skills-grid">
+      {% for skill in sheet.skills %}
+        <div class="skill-row" data-skill="{{ skill.key }}" data-attr="{{ skill.attr }}">
+          <div class="skill-main">
+            {% if can_edit %}
+              <button class="btn btn-ghost btn-sm btn-icon" type="button"
+                      data-roll data-label="{{ skill.name }}"
+                      data-dice="{{ skill.dice }}" data-bonus="{{ 0 if pool_roll else skill.total }}"
+                      data-target="{{ skill.total }}" title="Rolar {{ skill.name }}">🎲</button>
+            {% endif %}
+            <span class="skill-name">{{ skill.name }}</span>
+            {% if skill.attr_abbr %}<span class="tag">{{ skill.attr_abbr }}</span>{% endif %}
+            {% if skill.custom and can_edit %}
+              <button class="btn btn-danger btn-sm btn-icon" type="submit" data-full-submit
+                      name="__action" value="remove:skill:{{ skill.key }}" title="Remover perícia">✕</button>
+            {% endif %}
+          </div>
+          <div class="skill-controls">
+            {% if sheet.skill_mode == 'training' %}
+              <select name="skill__{{ skill.key }}__train" data-train>
+                {% for level in sheet.training_levels %}
+                  <option value="{{ level.value }}" {% if skill.train == level.value %}selected{% endif %}>
+                    {{ level.label }}{% if level.value %} +{{ level.value }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            {% elif sheet.skill_mode == 'proficiency' %}
+              <select name="skill__{{ skill.key }}__prof" data-prof>
+                <option value="0" {% if skill.prof == 0 %}selected{% endif %}>—</option>
+                <option value="1" {% if skill.prof == 1 %}selected{% endif %}>Proficiente</option>
+                <option value="2" {% if skill.prof == 2 %}selected{% endif %}>Especialista</option>
+              </select>
+            {% else %}
+              <input type="number" name="skill__{{ skill.key }}__value" value="{{ skill.value }}"
+                     data-value title="Valor da perícia">
+            {% endif %}
+            <input type="number" name="skill__{{ skill.key }}__other" value="{{ skill.other }}"
+                   data-other title="Outros bônus">
+            <span class="skill-total" data-total>
+              {% if sheet.skill_mode == 'percent' %}{{ skill.total }}%
+              {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice }}d+{{ skill.total }}
+              {% elif sheet.skill_mode == 'dots' %}{{ skill.total }}d
+              {% else %}{{ skill.total|signed }}{% endif %}
+            </span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if can_edit %}
+      <details style="margin-top:1rem">
+        <summary class="muted small" style="cursor:pointer">+ Adicionar perícia só nesta ficha</summary>
+        <div class="field-row" style="margin-top:.6rem">
+          <div class="field"><label>Nome</label><input type="text" name="new_skill_name" placeholder="Ex.: Gastronomia"></div>
+          <div class="field"><label>Atributo base</label>
+            <select name="new_skill_attr">
+              {% for attribute in sheet.attributes %}
+                <option value="{{ attribute.key }}">{{ attribute.name }}</option>
+              {% endfor %}
+            </select></div>
+          <div class="field"><label>Valor inicial</label><input type="number" name="new_skill_default" value="0"></div>
+          <div class="field" style="align-self:end">
+            <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_skill" data-full-submit>Adicionar</button>
+          </div>
+        </div>
+      </details>
+    {% endif %}
+  </div>
+  </section>
+
+  {# ================================================================ PODERES #}
+  <section class="sheet-tab" data-tab="poderes" role="tabpanel">
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ sheet.labels.spells }}</h2>
+      {% if can_edit %}<button class="btn btn-gold btn-sm" type="button" data-add-item="spells">+ Adicionar</button>{% endif %}
+    </div>
+    <div id="spells-rows"></div>
+    <input type="hidden" name="spells" id="spells-input">
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>{{ sheet.labels.abilities }}</h2>
+      {% if can_edit %}<button class="btn btn-ghost btn-sm" type="button" data-add-item="abilities">+ Adicionar</button>{% endif %}
+    </div>
+    <div id="abilities-rows"></div>
+    <input type="hidden" name="abilities" id="abilities-input">
+  </div>
+  </section>
+
+  {# ============================================================= INVENTÁRIO #}
+  <section class="sheet-tab" data-tab="inventario" role="tabpanel">
+  <div class="card">
+    <div class="card-head">
+      <h2>Inventário</h2>
+      <span class="actions">
+        {% if sheet.load.mode != 'none' %}
+          <span class="tag {{ 'tag-danger' if sheet.load.state == 'over' else ('tag-gold' if sheet.load.state == 'warn' else 'tag-ok') }}"
+                data-load-tag>{{ sheet.load.label }}</span>
+        {% endif %}
+        {% if can_edit %}<button class="btn btn-gold btn-sm" type="button" data-add-item="inventory">+ Adicionar item</button>{% endif %}
+      </span>
+    </div>
+
+    {% if sheet.load.mode != 'none' %}
+      <div class="load-box" data-load
+           data-capacity="{{ sheet.load.capacity }}"
+           data-unit="{{ sheet.load.unit }}">
+        <div class="bar-top">
+          <span class="bar-name">Carga</span>
+          <span class="muted small">
+            <strong data-load-used>{{ sheet.load.used|number }}</strong> /
+            <span data-load-capacity>{{ sheet.load.capacity|number }}</span> {{ sheet.load.unit }}
+            {% if sheet.load.attr_name %}<span class="muted">(base + {{ sheet.load.attr_name }})</span>{% endif %}
+          </span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" data-load-fill style="width:{{ sheet.load.percent }}%"></div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if sheet.money %}
+      <div class="money-row">
+        {% for coin in sheet.money %}
+          <div class="money-field">
+            <label for="money__{{ coin.key }}">{{ coin.abbr or coin.name }}</label>
+            <input type="number" min="0" id="money__{{ coin.key }}"
+                   name="money__{{ coin.key }}" value="{{ coin.value }}" title="{{ coin.name }}">
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div id="inventory-rows"></div>
+    <input type="hidden" name="inventory" id="inventory-input">
+  </div>
+  </section>
+
+  {# =============================================================== EVOLUÇÃO #}
+  <section class="sheet-tab" data-tab="evolucao" role="tabpanel">
+  <div class="card">
+    <div class="card-head">
+      <h2>Experiência e evolução</h2>
+      <span class="actions">
+        <span class="tag tag-gold">total {{ sheet.xp }}</span>
+        {% if sheet.xp_gained %}<span class="tag">{{ sheet.xp_gained }} registrados</span>{% endif %}
+        {% if can_edit %}
+          <button class="btn btn-ghost btn-sm" type="button" data-add-item="progress">+ Linha no log</button>
+        {% endif %}
+      </span>
+    </div>
+
+    <div class="field-row" style="align-items:end">
+      <div class="field" style="max-width:150px">
+        <label for="xp">XP atual</label>
+        <input type="number" id="xp" name="xp" min="0" value="{{ sheet.xp }}">
+      </div>
+      {% if can_edit %}
+        <div class="field" style="max-width:150px">
+          <label for="new_xp_amount">Ganhou quanto?</label>
+          <input type="number" id="new_xp_amount" name="new_xp_amount" placeholder="Ex.: 250">
+        </div>
+        <div class="field">
+          <label for="new_xp_note">Por quê?</label>
+          <input type="text" id="new_xp_note" name="new_xp_note"
+                 placeholder="Ex.: sessão 4 — derrotaram o Ghoul">
+        </div>
+        <div class="field">
+          <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_xp" data-full-submit>
+            Somar e registrar
+          </button>
+        </div>
+      {% endif %}
+    </div>
+    <p class="hint">“Somar e registrar” soma ao total e escreve uma linha no log.
+      O campo <strong>XP atual</strong> fica editável para corrigir à mão quando precisar.</p>
+
+    <div id="progress-rows"></div>
+    <input type="hidden" name="progress" id="progress-input">
+  </div>
+  </section>
+
+  {# ============================================================= PERSONAGEM #}
+  <section class="sheet-tab" data-tab="personagem" role="tabpanel">
+  <div class="card">
+    <div class="card-head"><h2>Identidade</h2></div>
+    <div class="grid grid-4">
+      {% for field in sheet.meta %}
+        <div class="field" style="margin:0">
+          <label for="meta__{{ field.key }}">
+            {{ field.name }}
+            {% if field.custom and can_edit %}
+              <button class="btn btn-danger btn-sm btn-icon" type="submit" data-full-submit
+                      name="__action" value="remove:meta:{{ field.key }}" title="Remover campo">✕</button>
+            {% endif %}
+          </label>
+          {% if field.type == 'textarea' %}
+            <textarea id="meta__{{ field.key }}" name="meta__{{ field.key }}" style="min-height:70px">{{ field.value }}</textarea>
+          {% else %}
+            <input type="{{ 'number' if field.type == 'number' else 'text' }}"
+                   id="meta__{{ field.key }}" name="meta__{{ field.key }}" value="{{ field.value }}">
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if can_edit %}
+      <details style="margin-top:1rem">
+        <summary class="muted small" style="cursor:pointer">+ Adicionar campo de identidade</summary>
+        <div class="field-row" style="margin-top:.6rem">
+          <div class="field"><label>Nome do campo</label>
+            <input type="text" name="new_meta_name" placeholder="Ex.: Fraqueza"></div>
+          <div class="field"><label>Tipo</label>
+            <select name="new_meta_type">
+              <option value="text">Texto</option>
+              <option value="number">Número</option>
+              <option value="textarea">Texto longo</option>
+            </select></div>
+          <div class="field" style="align-self:end">
+            <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_meta" data-full-submit>Adicionar campo</button>
+          </div>
+        </div>
+      </details>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Anotações do personagem</h2></div>
+    <div class="grid grid-3">
+      <div class="field" style="margin:0">
+        <label for="appearance">Aparência</label>
+        <textarea id="appearance" name="appearance" style="min-height:160px">{{ sheet.appearance }}</textarea>
+      </div>
+      <div class="field" style="margin:0">
+        <label for="history">História</label>
+        <textarea id="history" name="history" style="min-height:160px">{{ sheet.history }}</textarea>
+      </div>
+      <div class="field" style="margin:0">
+        <label for="notes">Notas livres</label>
+        <textarea id="notes" name="notes" style="min-height:160px">{{ sheet.notes }}</textarea>
+      </div>
+    </div>
+  </div>
+  </section>
+
+  </fieldset>
+
+  {% if can_edit %}
+    <div class="sticky-save">
+      <span class="save-state" data-save-state>Salvamento automático ligado.</span>
+      <button class="btn btn-primary" type="submit" data-full-submit>Salvar agora</button>
+    </div>
+  {% endif %}
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script id="sheet-config" type="application/json">{{ sheet_json|safe }}</script>
+<script id="sheet-items" type="application/json">
+  {{ {'inventory': sheet.inventory, 'abilities': sheet.abilities, 'attacks': sheet.attacks,
+      'spells': sheet.spells, 'conditions': sheet.conditions,
+      'progress': sheet.progress}|tojson }}
+</script>
+<script src="{{ url_for('static', filename='js/dice.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sheet.js') }}"></script>
+{% endblock %}

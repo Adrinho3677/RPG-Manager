@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Configurar {{ campaign.name }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:620px">
+  <div class="card">
+    <h1>Configurar campanha</h1>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="name">Nome</label>
+        <input type="text" id="name" name="name" value="{{ campaign.name }}" required>
+      </div>
+      <div class="field">
+        <label for="tagline">Subtítulo</label>
+        <input type="text" id="tagline" name="tagline" value="{{ campaign.tagline }}">
+      </div>
+      <div class="field">
+        <label for="status">Situação</label>
+        <select id="status" name="status">
+          {% for value in ['ativa', 'pausada', 'concluida'] %}
+            <option value="{{ value }}" {% if campaign.status == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="description">Premissa / descrição</label>
+        <textarea id="description" name="description" style="min-height:200px">{{ campaign.description }}</textarea>
+      </div>
+      <div class="field">
+        <label>Sistema</label>
+        <p class="muted small">{{ campaign.system.name }} — o sistema não muda depois de criada, para não quebrar as fichas.</p>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Salvar</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Zona de perigo</h3>
+    <p class="muted small">Excluir apaga fichas, sessões, anotações e combates desta campanha.</p>
+    <form method="post" action="{{ url_for('campaigns.delete', campaign_id=campaign.id) }}"
+          onsubmit="return confirm('Excluir a campanha {{ campaign.name }} e tudo dentro dela?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-danger btn-block" type="submit">Excluir campanha</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

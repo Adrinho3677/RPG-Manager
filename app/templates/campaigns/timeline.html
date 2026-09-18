@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Linha do tempo · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+<div class="split">
+  <div class="card">
+    <div class="card-head"><h2>Acontecimentos</h2><span class="tag">{{ entries|length }}</span></div>
+    {% if entries %}
+      <div class="timeline">
+        {% for entry in entries %}
+          <div class="timeline-item">
+            <div class="card" style="box-shadow:none">
+              <div class="card-head" style="margin-bottom:.35rem">
+                <h3>{{ entry.title }}</h3>
+                <span class="tags">
+                  {% if entry.label %}<span class="tag tag-gold">{{ entry.label }}</span>{% endif %}
+                  <span class="tag">{{ entry.author.username }}</span>
+                </span>
+              </div>
+              {% if entry.body %}<div class="prose small">{{ entry.body|rich }}</div>{% endif %}
+              {% if is_master or entry.author_id == current_user.id %}
+                <form method="post" style="margin-top:.5rem"
+                      action="{{ url_for('campaigns.timeline_delete', campaign_id=campaign.id, entry_id=entry.id) }}"
+                      onsubmit="return confirm('Remover este acontecimento?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-danger btn-sm" type="submit">Remover</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty"><p>Registre marcos da campanha para a mesa não perder o fio.</p></div>
+    {% endif %}
+  </div>
+
+  <aside>
+    <form method="post" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h3>Registrar acontecimento</h3>
+      <div class="field">
+        <label for="title">O que aconteceu</label>
+        <input type="text" id="title" name="title" required placeholder="A queda da Casa Valmont">
+      </div>
+      <div class="field">
+        <label for="label">Quando (no mundo do jogo)</label>
+        <input type="text" id="label" name="label" placeholder="Ex.: 3º dia de Inverno, Ano 412">
+      </div>
+      <div class="field">
+        <label for="body">Detalhes</label>
+        <textarea id="body" name="body" style="min-height:120px"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Adicionar</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

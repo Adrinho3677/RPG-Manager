@@ -1,0 +1,35 @@
+<div class="page-head">
+  <div>
+    <h1>{{ campaign.name }}</h1>
+    <p class="subtitle">
+      {{ campaign.tagline or campaign.system.name }}
+      · mestre: {{ campaign.master.username }}
+    </p>
+  </div>
+  <div class="actions">
+    {% if is_master %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.edit', campaign_id=campaign.id) }}">Configurar</a>
+    {% endif %}
+    <a class="btn btn-primary btn-sm" href="{{ url_for('characters.create', campanha=campaign.id) }}">+ Ficha</a>
+  </div>
+</div>
+
+<nav class="tabs">
+  {% set page = request.endpoint %}
+  <a href="{{ url_for('campaigns.overview', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'campaigns.overview' }}">Visão geral</a>
+  <a href="{{ url_for('campaigns.sessions', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page in ('campaigns.sessions', 'campaigns.session_detail') }}">Sessões</a>
+  <a href="{{ url_for('campaigns.notes', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page in ('campaigns.notes', 'campaigns.note_form') }}">Anotações</a>
+  <a href="{{ url_for('campaigns.cast', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'campaigns.cast' }}">Elenco &amp; NPCs</a>
+  <a href="{{ url_for('campaigns.encounters', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'campaigns.encounters' }}">Combate</a>
+  <a href="{{ url_for('uploads.gallery', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'uploads.gallery' }}">Mapas</a>
+  <a href="{{ url_for('campaigns.timeline', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'campaigns.timeline' }}">Linha do tempo</a>
+  <a href="{{ url_for('campaigns.members', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'campaigns.members' }}">Mesa</a>
+</nav>

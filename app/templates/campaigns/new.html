@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Nova campanha · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:620px">
+  <div class="card">
+    <h1>Nova campanha</h1>
+    <p class="muted">O sistema escolhido define o modelo das fichas da mesa.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="name">Nome da campanha</label>
+        <input type="text" id="name" name="name" required autofocus placeholder="Ex.: O Segredo na Floresta">
+      </div>
+      <div class="field">
+        <label for="tagline">Subtítulo</label>
+        <input type="text" id="tagline" name="tagline" placeholder="Uma frase que resume o tom da campanha">
+      </div>
+      <div class="field">
+        <label for="system_id">Sistema</label>
+        <select id="system_id" name="system_id" required>
+          {% for system in systems %}
+            <option value="{{ system.id }}">
+              {{ system.name }}{% if system.is_preset %} · modelo pronto{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <p class="hint">Não achou o seu? <a href="{{ url_for('systems.create') }}">Crie um sistema</a>.</p>
+      </div>
+      <div class="field">
+        <label for="description">Premissa / descrição</label>
+        <textarea id="description" name="description"
+                  placeholder="O que os jogadores precisam saber antes da sessão 1?"></textarea>
+        <p class="hint">Aceita **negrito**, *itálico*, listas com - e títulos com #.</p>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Criar campanha</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

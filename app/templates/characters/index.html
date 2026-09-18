@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Minhas fichas · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Minhas fichas</h1>
+    <p class="subtitle">Personagens, NPCs e criaturas que você criou.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('characters.create') }}">+ Nova ficha</a>
+</div>
+
+{% if characters %}
+  <div class="grid grid-3">
+    {% for character in characters %}
+      <a class="card campaign-card" href="{{ url_for('characters.detail', character_id=character.id) }}">
+        <div class="card-head" style="margin-bottom:.35rem">
+          <h3>{{ character.name }}</h3>
+          <span class="tag {{ 'tag-accent' if character.kind == 'pj' else 'tag-gold' }}">{{ character.kind }}</span>
+        </div>
+        <p class="muted small">{{ character.concept or 'sem conceito' }}</p>
+        <div class="tags">
+          <span class="tag">{{ character.system.name }}</span>
+          {% if character.campaign %}<span class="tag tag-accent">{{ character.campaign.name }}</span>{% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <p>Você ainda não criou fichas.</p>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('characters.create') }}">Criar a primeira</a>
+  </div>
+{% endif %}
+{% endblock %}

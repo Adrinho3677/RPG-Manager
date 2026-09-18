@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}{{ note.title if note else 'Nova anotação' }} · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+{% if note and not can_edit %}
+  {# Jogador lendo a anotação de outra pessoa #}
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ note.title }}</h2>
+      <span class="tags">
+        <span class="tag">{{ dict(categories).get(note.category, note.category) }}</span>
+        {% if note.recently_revealed %}<span class="tag tag-gold">revelada agora</span>{% endif %}
+      </span>
+    </div>
+    <div class="prose">{{ note.body|rich }}</div>
+    {% if note.tag_list %}
+      <div class="tags" style="margin-top:.7rem">
+        {% for tag in note.tag_list %}<span class="tag tag-accent">#{{ tag }}</span>{% endfor %}
+      </div>
+    {% endif %}
+    <p class="muted small" style="margin-top:1rem">Escrita por {{ note.author.username }} ·
+      atualizada em {{ note.updated_at|hora }}</p>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.notes', campaign_id=campaign.id) }}">← Voltar</a>
+  </div>
+{% else %}
+<div class="split">
+  <form method="post" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="title">Título</label>
+      <input type="text" id="title" name="title" value="{{ note.title if note else '' }}" required autofocus>
+    </div>
+    <div class="field">
+      <label for="body">Conteúdo</label>
+      <textarea id="body" name="body" style="min-height:320px"
+                placeholder="# Subtítulo&#10;- item&#10;**negrito**, *itálico*">{{ note.body if note else '' }}</textarea>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="category">Categoria</label>
+        <select id="category" name="category">
+          {% for value, label in categories %}
+            <option value="{{ value }}" {% if note and note.category == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="tags">Tags (separadas por vírgula)</label>
+        <input type="text" id="tags" name="tags" value="{{ note.tags if note else '' }}" placeholder="vilão, capítulo 2">
+      </div>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" name="pinned" {% if note and note.pinned %}checked{% endif %}> Fixar na visão geral</label>
+    </div>
+    {% if is_master %}
+      {% set current = note.visibility if note else 'mesa' %}
+      <fieldset class="visibility" data-visibility>
+        <legend>Quem pode ler</legend>
+        <label class="check"><input type="radio" name="visibility" value="mesa" {% if current == 'mesa' %}checked{% endif %}> Toda a mesa</label>
+        <label class="check"><input type="radio" name="visibility" value="mestre" {% if current == 'mestre' %}checked{% endif %}> Só o mestre</label>
+        <label class="check"><input type="radio" name="visibility" value="jogadores" {% if current == 'jogadores' %}checked{% endif %}
+                                    {% if not players %}disabled{% endif %}> Só jogadores escolhidos</label>
+        <div class="recipients" data-recipients {% if current != 'jogadores' %}hidden{% endif %}>
+          {% for player in players %}
+            <label class="check">
+              <input type="checkbox" name="recipients" value="{{ player.id }}"
+                     {% if note and player.id in note.recipient_ids %}checked{% endif %}>
+              {{ player.username }}
+            </label>
+          {% else %}
+            <p class="hint">Ninguém entrou na mesa ainda.</p>
+          {% endfor %}
+        </div>
+        <p class="hint">Uma anotação que sai de “só o mestre” aparece marcada como <strong>revelada agora</strong>
+          para os jogadores por três dias.</p>
+      </fieldset>
+    {% endif %}
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Salvar anotação</button>
+      <a class="btn btn-ghost" href="{{ url_for('campaigns.notes', campaign_id=campaign.id) }}">Voltar</a>
+    </div>
+  </form>
+
+  <aside>
+    {% if note %}
+      <div class="card">
+        <div class="card-head"><h3>Prévia</h3></div>
+        <div class="prose">{{ note.body|rich }}</div>
+      </div>
+
+      {% if is_master and note.visibility == 'mestre' and players %}
+        <div class="card">
+          <h3>Revelar para alguém</h3>
+          <p class="muted small">Mostra esta anotação sem mudar o resto dela.</p>
+          <form method="post" action="{{ url_for('campaigns.note_reveal', campaign_id=campaign.id, note_id=note.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="target" value="jogadores">
+            {% for player in players %}
+              <label class="check"><input type="checkbox" name="recipients" value="{{ player.id }}"> {{ player.username }}</label>
+            {% endfor %}
+            <button class="btn btn-gold btn-sm btn-block" type="submit" style="margin-top:.5rem">Revelar para os marcados</button>
+          </form>
+          <form method="post" action="{{ url_for('campaigns.note_reveal', campaign_id=campaign.id, note_id=note.id) }}" style="margin-top:.5rem">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="target" value="mesa">
+            <button class="btn btn-ghost btn-sm btn-block" type="submit">Revelar para a mesa toda</button>
+          </form>
+        </div>
+      {% elif is_master and note.visibility != 'mestre' %}
+        <div class="card">
+          <h3>Esconder de novo</h3>
+          <form method="post" action="{{ url_for('campaigns.note_reveal', campaign_id=campaign.id, note_id=note.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="target" value="mestre">
+            <button class="btn btn-ghost btn-sm btn-block" type="submit">Voltar a ser só do mestre</button>
+          </form>
+        </div>
+      {% endif %}
+
+      <div class="card">
+        <h3>Detalhes</h3>
+        <p class="muted small">Criada por {{ note.author.username }}<br>
+          Atualizada em {{ note.updated_at|hora }}</p>
+        <form method="post" action="{{ url_for('campaigns.note_delete', campaign_id=campaign.id, note_id=note.id) }}"
+              onsubmit="return confirm('Excluir esta anotação?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-danger btn-block btn-sm" type="submit">Excluir anotação</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="card">
+        <h3>Dica</h3>
+        <p class="muted small">Use categorias para separar NPCs, lugares, facções e segredos.
+          Anotações marcadas como “só o mestre” ficam invisíveis para os jogadores até você revelar.</p>
+      </div>
+    {% endif %}
+  </aside>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var box = document.querySelector("[data-visibility]");
+  if (!box) return;
+  var recipients = box.querySelector("[data-recipients]");
+  box.addEventListener("change", function (event) {
+    if (event.target.name === "visibility") {
+      recipients.hidden = event.target.value !== "jogadores";
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,100 @@
+/* Ficha em papel: fundo branco, tinta escura, nada de cinza economizando toner. */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #fff;
+  color: #14121a;
+  font: 11pt/1.4 "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+}
+
+.paper { max-width: 21cm; margin: 0 auto; padding: 1.2cm 1.4cm; }
+
+.print-bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; gap: .6rem; align-items: center; justify-content: space-between;
+  background: #efecf6; border: 1px solid #cfc8e0; border-radius: 10px;
+  padding: .6rem .9rem; margin-bottom: 1rem; flex-wrap: wrap;
+}
+.print-bar p { margin: 0; font-size: 10pt; color: #4b4463; }
+.print-bar .buttons { display: flex; gap: .5rem; }
+.print-bar button, .print-bar a {
+  font: inherit; font-weight: 600; font-size: 10pt; cursor: pointer;
+  border: 1px solid #7d45c9; background: #7d45c9; color: #fff;
+  padding: .4rem .9rem; border-radius: 7px; text-decoration: none;
+}
+.print-bar a { background: transparent; color: #5b34a0; }
+
+h1 { font-size: 19pt; margin: 0 0 .1rem; }
+h2 {
+  font-size: 11pt; margin: 0 0 .4rem; text-transform: uppercase;
+  letter-spacing: .06em; color: #5b34a0; border-bottom: 1.5px solid #5b34a0;
+  padding-bottom: .15rem;
+}
+p { margin: 0 0 .4rem; }
+
+.head { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: .9rem; }
+.head img { width: 84px; height: 84px; object-fit: cover; border: 1px solid #b9b1cd; border-radius: 6px; }
+.head .sub { color: #5a5370; font-size: 10pt; }
+
+.block { margin-bottom: .85rem; break-inside: avoid; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+.cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; }
+
+.pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .35rem .8rem; }
+.pair { border-bottom: 1px dotted #b9b1cd; padding-bottom: .12rem; }
+.pair .k { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .05em; color: #6f6788; display: block; }
+.pair .v { font-weight: 600; }
+
+.attrs { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: .4rem; }
+.attr {
+  border: 1.5px solid #14121a; border-radius: 7px; padding: .3rem .2rem; text-align: center;
+}
+.attr .k { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .05em; color: #6f6788; }
+.attr .v { font-size: 16pt; font-weight: 800; line-height: 1.1; }
+.attr .m { font-size: 8pt; color: #5b34a0; font-weight: 700; }
+
+.bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem; }
+.bar { border: 1px solid #b9b1cd; border-radius: 7px; padding: .35rem .5rem; }
+.bar .k { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.bar .v { font-size: 13pt; font-weight: 700; }
+.bar .boxes { margin-top: .2rem; height: 7px; border: 1px solid #b9b1cd; border-radius: 99px; overflow: hidden; }
+.bar .boxes > div { height: 100%; background: #14121a; }
+.bar .rest { font-size: 7.5pt; color: #6f6788; }
+
+table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+th, td { text-align: left; padding: .18rem .3rem; border-bottom: 1px solid #ddd8e8; vertical-align: top; }
+th { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .05em; color: #6f6788; }
+td.num, th.num { text-align: center; width: 48px; }
+
+.skills { columns: 3; column-gap: 1rem; font-size: 9.5pt; }
+.skill { break-inside: avoid; display: flex; justify-content: space-between; gap: .4rem;
+         border-bottom: 1px dotted #ddd8e8; padding: .1rem 0; }
+.skill .t { font-weight: 700; }
+.skill.trained .n::before { content: "● "; color: #5b34a0; }
+
+.chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chip { border: 1px solid #b9b1cd; border-radius: 99px; padding: .05rem .5rem; font-size: 8.5pt; }
+
+.prose-print { font-size: 9.5pt; white-space: pre-wrap; }
+.lines { border-bottom: 1px solid #ddd8e8; height: 1.1rem; }
+.muted-print { color: #6f6788; font-size: 9pt; }
+
+@media print {
+  .print-bar { display: none; }
+  .paper { max-width: none; padding: 0; }
+  body { font-size: 10pt; }
+  .block { break-inside: avoid; }
+  h2 { break-after: avoid; }
+}
+
+@page { size: A4; margin: 1.2cm; }
+
+/* Abrir a página de impressão no celular (antes de salvar o PDF) */
+@media screen and (max-width: 600px) {
+  .paper { padding: .8rem; }
+  .cols, .cols-3 { grid-template-columns: 1fr; }
+  .skills { columns: 2; }
+  .table-scroll { overflow-x: auto; }
+}
+@media screen and (max-width: 380px) { .skills { columns: 1; } }

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Entrar · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card">
+    <h1>Entrar</h1>
+    <p class="muted">Suas campanhas estão esperando.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="identifier">Usuário ou e-mail</label>
+        <input type="text" id="identifier" name="identifier" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Senha</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" name="remember" checked> Continuar conectado</label>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Entrar</button>
+    </form>
+    <p class="muted small" style="margin-top:1rem">
+      Ainda não tem conta? <a href="{{ url_for('auth.register') }}">Crie uma agora</a>.
+    </p>
+  </div>
+</div>
+{% endblock %}
