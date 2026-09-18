@@ -34,6 +34,13 @@
   </div>
 
   <div class="card">
+    <h3>Exportar campanha</h3>
+    <p class="muted small">Baixa um ZIP com tudo: fichas, sessões, anotações (inclusive as secretas),
+      combates, linha do tempo, rolagens e as imagens. Os e-mails da mesa não vão junto.</p>
+    <a class="btn btn-ghost btn-block" href="{{ url_for('campaigns.export', campaign_id=campaign.id) }}">⬇️ Baixar campanha (.zip)</a>
+  </div>
+
+  <div class="card">
     <h3>Zona de perigo</h3>
     <p class="muted small">Excluir apaga fichas, sessões, anotações e combates desta campanha.</p>
     <form method="post" action="{{ url_for('campaigns.delete', campaign_id=campaign.id) }}"

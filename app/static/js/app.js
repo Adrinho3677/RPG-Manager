@@ -46,6 +46,27 @@
     bar.addEventListener("click", function () { setTimeout(function () { centerActive(bar); }, 0); });
   });
 
+  // Botões "copiar": copiam o valor de data-copy.
+  document.querySelectorAll("[data-copy]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var original = button.textContent;
+      var done = function () {
+        button.textContent = "Copiado ✓";
+        setTimeout(function () { button.textContent = original; }, 1500);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(button.dataset.copy).then(done, function () {});
+      } else {
+        // http sem TLS (ex.: rede local) não tem clipboard API: seleciona o campo ao lado.
+        var field = button.parentElement.querySelector("input");
+        if (field) { field.select(); document.execCommand("copy"); done(); }
+      }
+    });
+  });
+  document.querySelectorAll("[data-select-all]").forEach(function (field) {
+    field.addEventListener("focus", function () { field.select(); });
+  });
+
   // Mensagens somem sozinhas depois de um tempo.
   document.querySelectorAll(".flash").forEach(function (flash) {
     setTimeout(function () {

@@ -211,6 +211,10 @@ class Character(db.Model):
     owner = db.relationship("User", back_populates="characters")
     campaign = db.relationship("Campaign", back_populates="characters")
     system = db.relationship("GameSystem")
+    revisions = db.relationship(
+        "CharacterRevision", cascade="all, delete-orphan", lazy="dynamic",
+        order_by="CharacterRevision.id.desc()",
+    )
 
     def editable_by(self, user):
         if not getattr(user, "is_authenticated", False):
@@ -468,3 +472,44 @@ class Asset(db.Model):
         # precisa funcionar fora de uma requisição. A rota uploads.serve usa o
         # mesmo prefixo.
         return self.URL_PREFIX + self.token
+
+
+class CharacterRevision(db.Model):
+    """Estado de uma ficha antes de uma leva de alterações — permite desfazer.
+
+    Criada automaticamente (ver app/revisions.py) sempre que o JSON da ficha
+    muda, venha a mudança de onde vier: a própria ficha, o combate, o XP da
+    sessão. Edições seguidas da mesma pessoa viram uma revisão só.
+    """
+
+    __tablename__ = "character_revisions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    character_id = db.Column(
+        db.Integer, db.ForeignKey("characters.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    data = db.Column(JSONField, nullable=False)
+    changed = db.Column(db.String(300), default="")   # seções alteradas depois deste estado
+    reason = db.Column(db.String(40), default="edição")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    author = db.relationship("User")
+
+    @property
+    def changed_list(self):
+        return [c for c in (self.changed or "").split(",") if c]
+
+
+class LoginAttempt(db.Model):
+    """Tentativa de login, para frear quem fica chutando senha."""
+
+    __tablename__ = "login_attempts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    identifier = db.Column(db.String(160), nullable=False, index=True)
+    ip = db.Column(db.String(64), nullable=False, index=True)
+    success = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)

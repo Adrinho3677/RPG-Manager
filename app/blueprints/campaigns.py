@@ -4,18 +4,19 @@ import secrets
 from datetime import date, datetime
 
 from flask import (Blueprint, abort, flash, jsonify, redirect, render_template,
-                   request, url_for)
+                   request, send_file, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy import and_, or_
 
 from app import dice
+from app import security
 from app import sheet as sheet_helper
 from app.blueprints.uploads import remove_file
 from app.extensions import db
 from app.models import (Campaign, CampaignMember, Character, Encounter, GameSession,
                         GameSystem, Note, NoteRecipient, RollLog, SessionAttendance,
                         TimelineEntry, User)
-from app.utils import to_int
+from app.utils import slugify, to_int
 
 bp = Blueprint("campaigns", __name__, url_prefix="/campanhas")
 
@@ -137,14 +138,24 @@ def create():
     return render_template("campaigns/new.html", systems=systems)
 
 
-@bp.route("/entrar", methods=["POST"])
-@login_required
-def join():
-    code = (request.form.get("invite_code") or "").strip().upper()
-    campaign = Campaign.query.filter_by(invite_code=code).first()
-    if not campaign:
-        flash("Código de convite não encontrado.", "error")
-        return redirect(url_for("main.dashboard"))
+def find_by_invite(code):
+    """Campanha do código de convite. Devolve (campanha, segundos_de_espera).
+
+    Códigos errados contam por IP (ver app/security.py): quem ficar chutando
+    códigos é bloqueado bem antes de achar uma campanha por sorte.
+    """
+    key = "convite:" + security.client_ip()
+    wait = security.seconds_blocked(None, key)
+    if wait:
+        return None, wait
+    code = (code or "").strip().upper()
+    campaign = Campaign.query.filter_by(invite_code=code).first() if code else None
+    if campaign is None:
+        security.record_attempt("convite", key, success=False)
+    return campaign, 0
+
+
+def add_member(campaign):
     if campaign.membership(current_user):
         flash("Você já faz parte desta campanha.", "warning")
     else:
@@ -154,6 +165,40 @@ def join():
         db.session.commit()
         flash("Você entrou em %s." % campaign.name, "success")
     return redirect(url_for("campaigns.overview", campaign_id=campaign.id))
+
+
+@bp.route("/entrar", methods=["POST"])
+@login_required
+def join():
+    campaign, wait = find_by_invite(request.form.get("invite_code"))
+    if wait:
+        flash(security.wait_message(wait), "error")
+        return redirect(url_for("main.dashboard"))
+    if not campaign:
+        flash("Código de convite não encontrado.", "error")
+        return redirect(url_for("main.dashboard"))
+    return add_member(campaign)
+
+
+@bp.route("/convite/<code>", methods=["GET", "POST"])
+def invite(code):
+    """Link de convite. Abrir o link só mostra a campanha; entrar exige confirmar
+    (POST) — ninguém vai parar numa mesa só por clicar num link."""
+    campaign, wait = find_by_invite(code)
+    if wait:
+        flash(security.wait_message(wait), "error")
+        return render_template("campaigns/invite.html", campaign=None), 429
+    if campaign is None:
+        return render_template("campaigns/invite.html", campaign=None), 404
+
+    if not current_user.is_authenticated:
+        return render_template("campaigns/invite.html", campaign=campaign, need_login=True)
+    if campaign.can_view(current_user):
+        flash("Você já faz parte desta campanha.", "warning")
+        return redirect(url_for("campaigns.overview", campaign_id=campaign.id))
+    if request.method == "POST":
+        return add_member(campaign)
+    return render_template("campaigns/invite.html", campaign=campaign, need_login=False)
 
 
 @bp.route("/<int:campaign_id>")
@@ -203,6 +248,21 @@ def edit(campaign_id):
         flash("Campanha atualizada.", "success")
         return redirect(url_for("campaigns.overview", campaign_id=campaign.id))
     return render_template("campaigns/edit.html", campaign=campaign)
+
+
+@bp.route("/<int:campaign_id>/exportar")
+@login_required
+def export(campaign_id):
+    """Baixa a campanha inteira num ZIP (JSON + imagens). Só o mestre."""
+    from app.export import build_zip
+
+    campaign = get_campaign(campaign_id, master_only=True)
+    filename = "campanha-%s-%s.zip" % (slugify(campaign.name, "campanha"), date.today().isoformat())
+    response = send_file(build_zip(campaign), mimetype="application/zip",
+                         as_attachment=True, download_name=filename)
+    # Tem os segredos do mestre: nada de cache em proxy ou navegador compartilhado.
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @bp.route("/<int:campaign_id>/excluir", methods=["POST"])
@@ -417,6 +477,7 @@ def session_xp(campaign_id, session_id):
             }
         )
         character.data = data
+        character._revision_reason = "xp da sessão"
         # Mudança feita por outra pessoa: a ficha aberta do jogador precisa saber.
         character.bump_version()
     db.session.commit()
@@ -848,6 +909,7 @@ def encounter_save(campaign_id, encounter_id):
         bar["current"] = max(-999, min(c["hp"], maximum))
         data["bars"][key] = bar
         sheet.data = data
+        sheet._revision_reason = "combate"
         touched.add(sheet.id)
 
     # Rodada nova: condições com duração perdem uma rodada; as que chegam a
@@ -874,6 +936,7 @@ def encounter_save(campaign_id, encounter_id):
             if changed:
                 data["conditions"] = kept
                 sheet.data = data
+                sheet._revision_reason = "combate"
                 touched.add(sheet.id)
 
     for sheet_id in touched:

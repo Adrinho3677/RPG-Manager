@@ -89,7 +89,14 @@
 
     <div class="card">
       <h3>Convite</h3>
-      <p class="muted small">Código para a mesa entrar:</p>
+      {% if is_master %}
+      {% set invite_link = url_for('campaigns.invite', code=campaign.invite_code, _external=True) %}
+      <div class="invite-link">
+        <input type="text" value="{{ invite_link }}" readonly aria-label="Link de convite" data-select-all>
+        <button class="btn btn-gold btn-sm" type="button" data-copy="{{ invite_link }}">Copiar link</button>
+      </div>
+      {% endif %}
+      <p class="muted small" style="margin-top:.6rem">Código para digitar no painel:</p>
       <p class="center"><span class="code-pill">{{ campaign.invite_code }}</span></p>
       <a class="btn btn-ghost btn-block btn-sm" href="{{ url_for('campaigns.members', campaign_id=campaign.id) }}">
         Ver a mesa ({{ campaign.members.count() }})

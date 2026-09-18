@@ -27,7 +27,7 @@
       <button class="btn btn-primary btn-block" type="submit">Criar conta</button>
     </form>
     <p class="muted small" style="margin-top:1rem">
-      Já tem conta? <a href="{{ url_for('auth.login') }}">Entrar</a>.
+      Já tem conta? <a href="{{ url_for('auth.login', next=request.args.get('next')) }}">Entrar</a>.
     </p>
   </div>
 </div>

@@ -47,3 +47,8 @@ class Config:
     # O banco guarda horários em UTC (o servidor do PythonAnywhere roda em UTC).
     # Na hora de mostrar, converte para este fuso.
     TIMEZONE = os.environ.get("TIMEZONE", "America/Sao_Paulo")
+
+    # Atrás de proxy (PythonAnywhere), o IP de verdade vem num cabeçalho. Sem
+    # isso todos os visitantes teriam o IP do proxy — e o bloqueio de login por
+    # IP travaria o site inteiro. Liga sozinho no PythonAnywhere.
+    BEHIND_PROXY = _flag("BEHIND_PROXY", bool(os.environ.get("PYTHONANYWHERE_DOMAIN")))

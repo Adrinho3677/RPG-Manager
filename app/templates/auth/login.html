@@ -8,7 +8,8 @@
     <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="identifier">Usuário ou e-mail</label>
-        <input type="text" id="identifier" name="identifier" required autofocus>
+        <input type="text" id="identifier" name="identifier" value="{{ identifier or '' }}"
+               autocomplete="username" required autofocus>
       </div>
       <div class="field">
         <label for="password">Senha</label>
@@ -20,7 +21,7 @@
       <button class="btn btn-primary btn-block" type="submit">Entrar</button>
     </form>
     <p class="muted small" style="margin-top:1rem">
-      Ainda não tem conta? <a href="{{ url_for('auth.register') }}">Crie uma agora</a>.
+      Ainda não tem conta? <a href="{{ url_for('auth.register', next=request.args.get('next')) }}">Crie uma agora</a>.
     </p>
   </div>
 </div>

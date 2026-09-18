@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Histórico · {{ character.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Histórico de {{ character.name }}</h1>
+    <p class="subtitle">Cada linha é como a ficha estava <strong>antes</strong> de uma leva de alterações.
+      Edições seguidas da mesma pessoa aparecem juntas.</p>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('characters.detail', character_id=character.id) }}">← Voltar à ficha</a>
+</div>
+
+<div class="card">
+  {% if revisions %}
+    <div class="list">
+      {% for revision in revisions %}
+        <div class="list-item revision">
+          <span>
+            <strong>{{ revision.created_at|hora }}</strong>
+            <span class="tags" style="margin:.25rem 0">
+              <span class="tag {{ 'tag-gold' if revision.reason != 'edição' else '' }}">{{ revision.reason }}</span>
+              <span class="tag">{{ revision.author.username if revision.author else 'sistema' }}</span>
+            </span>
+            <span class="meta">depois disso mudou: {{ revision.changed_list|join(', ') or '—' }}</span>
+          </span>
+          <form method="post"
+                action="{{ url_for('characters.history_restore', character_id=character.id, revision_id=revision.id) }}"
+                onsubmit="return confirm('Voltar a ficha para como estava em {{ revision.created_at|hora }}? Isso também fica no histórico.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-ghost btn-sm" type="submit">Restaurar</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+    <p class="hint" style="margin-top:.8rem">Guardamos as {{ revisions|length }} mais recentes (até 60).
+      Restaurar também entra aqui — dá para voltar atrás de uma restauração.</p>
+  {% else %}
+    <div class="empty"><p>Nenhuma alteração registrada ainda.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

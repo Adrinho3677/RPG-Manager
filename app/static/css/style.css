@@ -552,3 +552,6 @@ a.user-chip:hover { text-decoration: none; border-color: var(--accent); }
 .roll-log header .last { color: var(--accent-2); font-weight: 700; margin-left: .4rem; }
 .roll-log:not(.collapsed) header .last { display: none; }
 .roll-log header { cursor: pointer; user-select: none; }
+
+.invite-link { display: flex; gap: .4rem; }
+.invite-link input { font-size: .8rem; color: var(--accent-2); min-width: 0; }

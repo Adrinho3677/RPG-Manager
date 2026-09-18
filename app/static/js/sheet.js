@@ -698,6 +698,23 @@
       });
     });
 
+    // Desfazer e afins: terminam o salvamento pendente antes, senão ele chegaria
+    // depois e reaplicaria justamente o que se quis desfazer.
+    document.querySelectorAll("form[data-flush-first]").forEach(function (other) {
+      other.addEventListener("submit", function (event) {
+        if (other.dataset.flushed) return;
+        if (event.defaultPrevented) return;  // o confirm() foi cancelado
+        event.preventDefault();
+        clearTimeout(timer);
+        Promise.resolve(flush()).then(function () {
+          dirty = {};
+          submitting = true;
+          other.dataset.flushed = "1";
+          other.submit();
+        });
+      });
+    });
+
     var reload = document.querySelector("[data-reload]");
     if (reload) {
       reload.addEventListener("click", function () {

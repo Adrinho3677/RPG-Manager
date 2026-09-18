@@ -117,8 +117,11 @@ def test_banco_legado_e_marcado_e_atualizado(tmp_path):
     cfg.AUTO_MIGRATE = True
     app = create_app(cfg)
     with app.app_context():
+        from alembic.script import ScriptDirectory
+        config = app.extensions["migrate"].migrate.get_config(app.config["MIGRATIONS_DIR"])
+        head = ScriptDirectory.from_config(config).get_current_head()
         version = db.session.execute(db.text("select version_num from alembic_version")).scalar()
-        assert version == "0002_melhorias"
+        assert version == head   # a mais nova, seja qual for — não fixa o número aqui
         row = db.session.execute(db.text("select name, version from characters")).one()
         assert row == ("Antigo", 1)
 

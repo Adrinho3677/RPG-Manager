@@ -11,8 +11,8 @@ from app import dice
 from app import sheet as sheet_helper
 from app.blueprints.uploads import UploadError, asset_from_url, remove_file, save_upload
 from app.extensions import db
-from app.models import Campaign, Character, GameSystem, RollLog
-from app.utils import clean_color, to_float, to_int, unique_key
+from app.models import Campaign, Character, CharacterRevision, GameSystem, RollLog
+from app.utils import clean_color, local_time, to_float, to_int, unique_key
 
 bp = Blueprint("characters", __name__, url_prefix="/fichas")
 
@@ -282,6 +282,52 @@ def roll(character_id):
         db.session.commit()
         entry = log.as_dict()
     return jsonify({"ok": True, "roll": entry})
+
+
+@bp.route("/<int:character_id>/historico")
+@login_required
+def history(character_id):
+    character = get_character(character_id, for_edit=True)
+    return render_template(
+        "characters/history.html",
+        character=character,
+        revisions=character.revisions.limit(60).all(),
+    )
+
+
+def restore(character, revision):
+    """Volta a ficha para o estado guardado. Também vira uma revisão — dá para desfazer."""
+    character.data = copy.deepcopy(revision.data)
+    character._revision_reason = "restauração"
+    character.bump_version()
+    db.session.commit()
+
+
+@bp.route("/<int:character_id>/historico/<int:revision_id>/restaurar", methods=["POST"])
+@login_required
+def history_restore(character_id, revision_id):
+    character = get_character(character_id, for_edit=True)
+    revision = CharacterRevision.query.filter_by(
+        id=revision_id, character_id=character.id).first_or_404()
+    when = local_time(revision.created_at)
+    restore(character, revision)
+    flash("Ficha restaurada para como estava em %s. Se foi engano, dá para desfazer." % when,
+          "success")
+    return redirect(url_for("characters.detail", character_id=character.id))
+
+
+@bp.route("/<int:character_id>/desfazer", methods=["POST"])
+@login_required
+def undo(character_id):
+    character = get_character(character_id, for_edit=True)
+    revision = character.revisions.first()
+    if revision is None:
+        flash("Não há nada para desfazer.", "warning")
+    else:
+        changed = ", ".join(revision.changed_list) or "a ficha"
+        restore(character, revision)
+        flash("Desfeito: %s voltou ao que era antes." % changed, "success")
+    return redirect(url_for("characters.detail", character_id=character.id))
 
 
 @bp.route("/<int:character_id>/imprimir")
@@ -591,6 +637,7 @@ def handle_action(character, action, form):
         kind = action.split(":")[1]
         rested, changes = sheet_helper.apply_rest(character.system, data, kind)
         character.data = rested
+        character._revision_reason = "descanso"
         nome = "Descanso curto" if kind == "short" else "Descanso longo"
         if not changes:
             return "%s: nada mudou (tudo já estava no máximo)." % nome

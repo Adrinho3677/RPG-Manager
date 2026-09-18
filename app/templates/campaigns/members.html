@@ -35,8 +35,14 @@
   <aside>
     <div class="card">
       <h3>Código de convite</h3>
+      <p class="muted small">Mande o link — quem abrir faz login (ou cria a conta) e entra:</p>
+      {% set invite_link = url_for('campaigns.invite', code=campaign.invite_code, _external=True) %}
+      <div class="invite-link">
+        <input type="text" value="{{ invite_link }}" readonly aria-label="Link de convite" data-select-all>
+        <button class="btn btn-gold btn-sm" type="button" data-copy="{{ invite_link }}">Copiar link</button>
+      </div>
+      <p class="muted small" style="margin-top:.8rem">Ou o código, para digitar no painel:</p>
       <p class="center"><span class="code-pill">{{ campaign.invite_code }}</span></p>
-      <p class="muted small">Quem tiver esse código pode entrar na campanha pelo painel.</p>
       {% if is_master %}
         <form method="post" action="{{ url_for('campaigns.new_code', campaign_id=campaign.id) }}"
               onsubmit="return confirm('Gerar um novo código? O atual deixa de valer.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

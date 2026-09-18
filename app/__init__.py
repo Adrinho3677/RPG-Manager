@@ -16,6 +16,12 @@ def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=False)
     app.config.from_object(config_class)
 
+    if app.config.get("BEHIND_PROXY"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        # Confia só no último salto (o proxy do PythonAnywhere): um visitante que
+        # mande X-Forwarded-For inventado não consegue trocar o próprio IP.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), "instance"), exist_ok=True)
 
     db.init_app(app)
@@ -26,7 +32,10 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
 
     from app import models  # noqa: F401  (registra as tabelas)
+    from app import revisions
     from app.presets import sync_presets
+
+    revisions.register()
 
     @login_manager.user_loader
     def load_user(user_id):

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Convite · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:520px">
+  <div class="card center">
+    {% if campaign is none %}
+      <h1>Convite inválido</h1>
+      <p class="muted">Este link não funciona mais. O mestre pode ter gerado um código novo —
+        peça o link atualizado.</p>
+      <a class="btn btn-ghost" href="{{ url_for('main.index') }}">Ir para o início</a>
+    {% else %}
+      <p class="muted small" style="margin-bottom:.3rem">Você foi convidado para</p>
+      <h1>{{ campaign.name }}</h1>
+      {% if campaign.tagline %}<p class="muted">{{ campaign.tagline }}</p>{% endif %}
+      <div class="tags" style="justify-content:center;margin-bottom:1rem">
+        <span class="tag tag-accent">{{ campaign.system.name }}</span>
+        <span class="tag">mestre: {{ campaign.master.username }}</span>
+        <span class="tag">{{ campaign.members.count() }} na mesa</span>
+      </div>
+
+      {% if need_login %}
+        <p>Para entrar, faça login ou crie uma conta — depois você volta direto para cá.</p>
+        <div class="actions" style="justify-content:center">
+          <a class="btn btn-primary" href="{{ url_for('auth.register', next=request.path) }}">Criar conta</a>
+          <a class="btn btn-ghost" href="{{ url_for('auth.login', next=request.path) }}">Já tenho conta</a>
+        </div>
+      {% else %}
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-gold btn-block" type="submit">Entrar na campanha</button>
+        </form>
+        <p class="hint" style="margin-top:.7rem">Entrando como <strong>{{ current_user.username }}</strong>.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -31,6 +31,14 @@
     {% if character.campaign %}
       <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.overview', campaign_id=character.campaign_id) }}">Campanha</a>
     {% endif %}
+    {% if can_edit %}
+      <form method="post" action="{{ url_for('characters.undo', character_id=character.id) }}" data-flush-first
+            onsubmit="return confirm('Desfazer a última leva de alterações desta ficha?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-sm" type="submit" title="Volta ao estado antes da última leva de alterações">↶ Desfazer</button>
+      </form>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.history', character_id=character.id) }}">🕘 Histórico</a>
+    {% endif %}
     <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.print_sheet', character_id=character.id) }}"
        target="_blank" rel="noopener">🖨️ Imprimir / PDF</a>
     <a class="btn btn-ghost btn-sm" href="{{ url_for('characters.index') }}">Minhas fichas</a>

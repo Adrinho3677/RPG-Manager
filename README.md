@@ -52,6 +52,9 @@ Evolução e Personagem** — para caber no celular durante a sessão.
 - **Inventário com peso e carga**, sobrecarga, dinheiro nas moedas do sistema.
 - **Ataques** com teste e dano roláveis, **magias**, **habilidades**, **condições** com duração.
 - **Experiência** com log de evolução.
+- **Histórico e desfazer**: cada leva de alterações guarda como a ficha estava antes —
+  inclusive o dano dado pelo combate e o XP da sessão. Um clique desfaz; dá para restaurar
+  qualquer ponto das últimas 60 levas, e restaurar também pode ser desfeito.
 - Retrato por **upload** de imagem ou link.
 - Atributos, barras, perícias e campos extras **criados só naquela ficha**.
 - **Imprimir / PDF**: página A4 em preto no branco (o navegador gera o PDF).
@@ -73,7 +76,12 @@ pode fazer **rolagens secretas**.
   Condições com duração perdem uma rodada por rodada e somem quando acabam. Jogadores
   acompanham ao vivo, mas **não recebem o PV dos inimigos**, só "ileso / ferido / grave".
 - **Mapas**: galeria de imagens da campanha, que o mestre pode guardar e revelar depois.
-- **Linha do tempo** e **mesa** com código de convite.
+- **Linha do tempo** e **mesa**.
+- **Convite por link**: quem abre faz login ou cria a conta e volta direto para confirmar a
+  entrada. Gerar um código novo invalida o link antigo.
+- **Exportar campanha**: o mestre baixa um ZIP com tudo (fichas, sessões, anotações — inclusive
+  as secretas —, combates, linha do tempo, rolagens e imagens) em JSON legível. Os e-mails da
+  mesa não vão junto.
 
 ---
 
@@ -107,8 +115,9 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-São 95 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
-edição simultânea, combate, permissões, anotações secretas, rolagens, importação e upload.
+São 116 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
+edição simultânea, histórico, combate, permissões, anotações secretas, rolagens, convite,
+limite de login, exportação, importação e upload.
 Cada teste usa um banco temporário próprio — o seu banco real nunca é tocado.
 
 ---
@@ -154,6 +163,7 @@ if path not in sys.path:
 os.environ['SECRET_KEY'] = 'ponha-aqui-uma-chave-longa-e-aleatoria'
 os.environ['SECURE_COOKIES'] = '1'   # o PythonAnywhere usa HTTPS
 os.environ['TIMEZONE'] = 'America/Sao_Paulo'
+os.environ['BEHIND_PROXY'] = '1'     # IP real dos visitantes (limite de login)
 
 from wsgi import application  # noqa
 ```
@@ -239,6 +249,7 @@ O comando `flask backup` só funciona com SQLite; no MySQL use o backup da aba *
 | `SECRET_KEY` | — | **Obrigatória em produção.** Assina as sessões. |
 | `SECURE_COOKIES` | `0` | `1` em HTTPS: cookie de sessão só trafega criptografado. |
 | `TIMEZONE` | `America/Sao_Paulo` | Fuso para mostrar horários (o banco guarda em UTC). |
+| `BEHIND_PROXY` | tenta detectar | Lê o IP real atrás de proxy. **Use `1` no PythonAnywhere**: sem isso todos chegam com o IP do proxy e o bloqueio de login travaria o site inteiro. |
 | `DATABASE_URL` | SQLite em `instance/` | Outro banco. |
 | `AUTO_MIGRATE` | `1` | `0` se rodar vários processos web ao mesmo tempo. |
 | `UPLOAD_DIR` | `instance/uploads` | Onde ficam as imagens enviadas. |
@@ -281,6 +292,11 @@ algum modelo ficou sem migração.
 
 ## Segurança
 
+- **Limite de login**: 5 senhas erradas bloqueiam a conta por 15 minutos, e 20 falhas do mesmo
+  IP bloqueiam o IP. Fica no banco, então sobrevive a um Reload. Códigos de convite errados
+  também contam, para ninguém descobrir campanhas chutando códigos.
+- **Sem redirecionamento para fora**: o `?next=` do login só aceita caminhos do próprio site.
+- O tempo de resposta do login não revela se um nome de usuário existe.
 - **CSRF**: todo formulário e toda chamada do JavaScript levam token. Outro site não
   consegue fazer um mestre logado apagar a campanha.
 - **Cookies** `HttpOnly` e `SameSite=Lax`; `Secure` com `SECURE_COOKIES=1`.
@@ -293,3 +309,10 @@ algum modelo ficou sem migração.
   `nosniff` e CSP restritiva.
 - Conteúdo escrito por usuários é escapado antes de virar HTML.
 - Fórmulas nunca são executadas como código.
+
+---
+
+## No radar
+
+- **Instalar como app (PWA)**: ícone na tela inicial e tela cheia no celular.
+- **Mapa tático**: fichas arrastáveis sobre a imagem do mapa durante o combate.
