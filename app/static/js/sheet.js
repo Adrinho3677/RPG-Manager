@@ -674,12 +674,26 @@
       }
     });
 
+    // Navegadores antigos (Safari < 15.4) não têm event.submitter.
+    var lastSubmitter = null;
+    form.addEventListener("click", function (event) {
+      var button = event.target.closest && event.target.closest("button[type=submit], input[type=submit]");
+      if (button) lastSubmitter = button;
+    });
+
     // Envios completos (descanso, adicionar campo, "Salvar agora"): primeiro
     // termina o salvamento automático, para a versão enviada estar em dia.
     form.addEventListener("submit", function (event) {
       if (submitting) return;
+      if (!stale && !saving && !dirtyCount()) {
+        // Nada pendente: deixa o navegador enviar normalmente, com o botão
+        // clicado (o __action) e tudo — sem interceptar nem reenviar.
+        clearTimeout(timer);
+        submitting = true;
+        return;
+      }
       event.preventDefault();
-      var submitter = event.submitter || null;
+      var submitter = event.submitter || lastSubmitter;
       if (stale) {
         if (staleBanner) {
           staleBanner.hidden = false;
@@ -691,15 +705,22 @@
       }
       setState("Salvando…", "saving");
       Promise.resolve(flush()).then(function () {
-        if (stale) return;
+        if (stale) {
+          setState("Ficha desatualizada — recarregue antes de continuar.", "error");
+          return;
+        }
         submitting = true;
-        // setTimeout: sem nada pendente, o flush resolve na hora e este código
-        // rodaria ainda durante o evento de submit — e o navegador ignora um
-        // requestSubmit feito nesse momento (ficava "Salvando…" para sempre).
-        setTimeout(function () {
-          if (form.requestSubmit) form.requestSubmit(submitter || undefined);
-          else form.submit();
-        }, 0);
+        // form.submit() não dispara eventos nem é ignorado pelo navegador (o
+        // requestSubmit às vezes era, e a ficha ficava em "Salvando…"), mas
+        // também não leva o botão clicado: o __action vai num campo oculto.
+        if (submitter && submitter.name) {
+          var hidden = document.createElement("input");
+          hidden.type = "hidden";
+          hidden.name = submitter.name;
+          hidden.value = submitter.value;
+          form.appendChild(hidden);
+        }
+        setTimeout(function () { form.submit(); }, 0);
       });
     });
 

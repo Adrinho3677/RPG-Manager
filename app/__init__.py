@@ -59,6 +59,7 @@ def create_app(config_class=Config):
     register_filters(app)
     register_errors(app)
     register_security_headers(app)
+    register_static_versions(app)
 
     from app.commands import register_commands
     register_commands(app)
@@ -121,6 +122,23 @@ def check_secret_key(app):
             "SECRET_KEY não configurada (ou curta demais). No PythonAnywhere, defina "
             "os.environ['SECRET_KEY'] no arquivo WSGI com uma chave longa e aleatória."
         )
+
+
+def register_static_versions(app):
+    """url_for('static', ...) ganha ?v=<data do arquivo>.
+
+    Sem isso o navegador pode continuar usando um sheet.js antigo do cache
+    depois de um deploy (o PythonAnywhere não manda Cache-Control). Com a data
+    na URL, arquivo mudou = URL nova = download novo.
+    """
+    @app.url_defaults
+    def static_version(endpoint, values):
+        if endpoint != "static" or "filename" not in values or "v" in values:
+            return
+        try:
+            values["v"] = int(os.stat(os.path.join(app.static_folder, values["filename"])).st_mtime)
+        except OSError:
+            pass
 
 
 def register_security_headers(app):

@@ -102,3 +102,10 @@ def test_producao_sem_secret_key_nao_sobe():
 
     with pytest.raises(RuntimeError, match="SECRET_KEY"):
         create_app(SemChave)
+
+
+def test_arquivos_estaticos_levam_versao_na_url(app):
+    """Depois de um deploy o navegador precisa baixar o JS novo, não usar o do cache."""
+    html = app.test_client().get("/entrar").get_data(as_text=True)
+    assert "/static/js/app.js?v=" in html
+    assert "/static/css/style.css?v=" in html
