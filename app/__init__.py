@@ -15,6 +15,7 @@ INITIAL_REVISION = "0001_inicial"
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=False)
     app.config.from_object(config_class)
+    check_secret_key(app)
 
     if app.config.get("BEHIND_PROXY"):
         from werkzeug.middleware.proxy_fix import ProxyFix
@@ -57,6 +58,7 @@ def create_app(config_class=Config):
 
     register_filters(app)
     register_errors(app)
+    register_security_headers(app)
 
     from app.commands import register_commands
     register_commands(app)
@@ -107,6 +109,33 @@ def register_filters(app):
             "APP_NAME": "Grimório",
             "APP_TAGLINE": "Gerenciador de campanhas de RPG",
         }
+
+
+def check_secret_key(app):
+    """Em produção (cookies seguros ligados), a chave padrão é pública — está no
+    GitHub. Melhor o site não subir do que subir com sessões falsificáveis."""
+    key = app.config.get("SECRET_KEY")
+    if app.config.get("SESSION_COOKIE_SECURE") and (
+            not key or key == app.config.get("DEFAULT_SECRET_KEY") or len(key) < 16):
+        raise RuntimeError(
+            "SECRET_KEY não configurada (ou curta demais). No PythonAnywhere, defina "
+            "os.environ['SECRET_KEY'] no arquivo WSGI com uma chave longa e aleatória."
+        )
+
+
+def register_security_headers(app):
+    @app.after_request
+    def security_headers(response):
+        # Outro site não pode carregar o Grimório num <iframe> invisível e enganar
+        # o usuário para clicar em "excluir" (clickjacking).
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        # Links externos não recebem a URL de onde a pessoa veio — ela pode
+        # conter o código de convite da campanha.
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        if request.is_secure:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return response
 
 
 def register_errors(app):

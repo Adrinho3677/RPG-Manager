@@ -6,6 +6,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import security
 from app.extensions import db
 from app.models import User
+from app.utils import valid_email
 
 bp = Blueprint("auth", __name__)
 
@@ -68,8 +69,8 @@ def register():
             errors.append("O nome de usuário precisa de pelo menos 3 caracteres.")
         if len(username) > 64 or "@" in username:
             errors.append("O nome de usuário não pode ter @ nem passar de 64 caracteres.")
-        if "@" not in email:
-            errors.append("Informe um e-mail válido.")
+        if not valid_email(email):
+            errors.append("Informe um e-mail válido (ex.: nome@gmail.com).")
         if len(password) < 6:
             errors.append("A senha precisa de pelo menos 6 caracteres.")
         if password != confirm:

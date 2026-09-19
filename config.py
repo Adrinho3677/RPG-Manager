@@ -12,7 +12,11 @@ def _flag(name, default):
 
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
+    # Assina os cookies de sessão: quem conhece a chave consegue se passar por
+    # qualquer usuário. Com cookies seguros ligados (produção) o app se recusa a
+    # subir com esta chave padrão — veja create_app.
+    DEFAULT_SECRET_KEY = "troque-esta-chave-em-producao"
+    SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL", "sqlite:///" + os.path.join(INSTANCE_DIR, "rpgmanager.db")
     )

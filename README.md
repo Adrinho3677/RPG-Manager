@@ -307,7 +307,16 @@ algum modelo ficou sem migração.
 - **Uploads**: o tipo é detectado pelos bytes do arquivo (só PNG, JPG, GIF, WEBP; SVG é
   recusado porque pode carregar script), o nome no disco é aleatório, e a resposta vai com
   `nosniff` e CSP restritiva.
-- Conteúdo escrito por usuários é escapado antes de virar HTML.
+- Conteúdo escrito por usuários é escapado antes de virar HTML — inclusive dentro dos dados
+  JSON embutidos na página (um nome de perícia com `</script>` não vira código).
+- **Cabeçalhos**: `X-Frame-Options` (nada de abrir o site num iframe alheio), `nosniff`,
+  `Referrer-Policy: same-origin` (o código de convite na URL não vaza para links externos) e
+  HSTS em HTTPS.
+- **SECRET_KEY obrigatória em produção**: com `SECURE_COOKIES=1`, o site se recusa a subir com
+  a chave padrão ou uma chave curta.
+- **E-mail**: o formato é conferido (`nome@dominio.com`), mas o site **não envia e-mail de
+  confirmação** — não há prova de que a pessoa é dona do endereço. Por isso o e-mail não
+  serve para recuperar senha; quem esquecer a senha usa `flask redefinir-senha`.
 - Fórmulas nunca são executadas como código.
 
 ---

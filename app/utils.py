@@ -1,9 +1,41 @@
 # -*- coding: utf-8 -*-
 """Funções auxiliares usadas pelas views e pelos templates."""
+import json
 import re
 import unicodedata
 
 from markupsafe import Markup, escape
+
+EMAIL_MAX = 160  # tamanho da coluna users.email
+
+# Parte local: palavras separadas por ponto (sem ponto no começo, no fim ou
+# dobrado). Domínio: rótulos de letras/números/hífen, sem hífen nas pontas, e
+# um final de pelo menos 2 letras. Recusa o que costuma ser erro de digitação
+# ("ana@gmail", "ana@@x.com", espaços) sem tentar cobrir todo o RFC 5322.
+_EMAIL_RE = re.compile(
+    r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
+
+
+def valid_email(value):
+    """True se `value` (já em minúsculas e sem espaços nas pontas) parece um e-mail."""
+    return bool(value) and len(value) <= EMAIL_MAX and bool(_EMAIL_RE.fullmatch(value))
+
+
+def script_json(value):
+    """JSON para colocar dentro de <script type="application/json">.
+
+    json.dumps sozinho deixa passar "</script>": um nome de perícia como
+    "</script><script>..." fecharia a tag e rodaria código na página de quem
+    abrisse a ficha (o mestre, por exemplo). Trocar <, > e & pelos escapes \\u
+    mantém o JSON idêntico para o JSON.parse, mas inofensivo para o HTML.
+    """
+    text = json.dumps(value, ensure_ascii=False)
+    for char, code in (("<", "\\u003c"), (">", "\\u003e"), ("&", "\\u0026"),
+                       (" ", "\\u2028"), (" ", "\\u2029")):
+        text = text.replace(char, code)
+    return Markup(text)
 
 
 def slugify(value, fallback="campo"):

@@ -12,7 +12,7 @@ from app import sheet as sheet_helper
 from app.blueprints.uploads import UploadError, asset_from_url, remove_file, save_upload
 from app.extensions import db
 from app.models import Campaign, Character, CharacterRevision, GameSystem, RollLog
-from app.utils import clean_color, local_time, to_float, to_int, unique_key
+from app.utils import clean_color, local_time, script_json, to_float, to_int, unique_key
 
 bp = Blueprint("characters", __name__, url_prefix="/fichas")
 
@@ -147,7 +147,7 @@ def detail(character_id):
         sheet=data,
         can_edit=can_edit,
         categories=ITEM_CATEGORIES,
-        sheet_json=json.dumps(
+        sheet_json=script_json(
             {
                 "id": character.id,
                 "version": character.version,
@@ -166,7 +166,6 @@ def detail(character_id):
                              if campaign else None),
                 "is_master": bool(campaign and campaign.is_master(current_user)),
             },
-            ensure_ascii=False,
         ),
     )
 

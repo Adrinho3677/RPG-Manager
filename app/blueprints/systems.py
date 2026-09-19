@@ -11,7 +11,7 @@ from app.models import GameSystem
 from app.presets import GENERICO
 from app.formula import known_names, validate as validate_formula
 from app.sheet import REST_MODES
-from app.utils import clean_color, slugify, to_float, to_int, unique_key
+from app.utils import clean_color, script_json, slugify, to_float, to_int, unique_key
 
 bp = Blueprint("systems", __name__, url_prefix="/sistemas")
 
@@ -169,7 +169,7 @@ def edit(system_id):
         inventory_modes=INVENTORY_MODES,
         rest_modes=REST_MODES,
         default_labels=DEFAULT_LABELS,
-        payload=json.dumps(system.data or {}, ensure_ascii=False),
+        payload=script_json(system.data or {}),
     )
 
 
