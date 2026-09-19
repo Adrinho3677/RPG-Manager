@@ -225,8 +225,22 @@ cd ~/RPG-Manager && git pull
 pip install -r requirements.txt
 ```
 
-E clique em **Reload**. **As migrações do banco rodam sozinhas** quando o site sobe; um banco
-criado antes das migrações existirem é reconhecido e atualizado sem perder dados.
+E clique em **Reload** na aba Web — **sempre, depois de todo `git pull`**. Sem isso o site
+continua rodando o código antigo na memória, mas lê as páginas (templates) novas do disco: a
+mistura dá erro 500 justamente nas telas que mudaram.
+
+Para não depender de lembrar do botão, dá para fazer tudo pelo console — editar o arquivo WSGI
+faz o PythonAnywhere recarregar o site:
+
+```bash
+cd ~/RPG-Manager && git pull && workon rpgmanager && pip install -r requirements.txt && touch /var/www/SEU_USUARIO_pythonanywhere_com_wsgi.py
+```
+
+(troque `SEU_USUARIO` pelo seu usuário em minúsculas; o nome exato do arquivo aparece na aba
+Web, em "WSGI configuration file".)
+
+**As migrações do banco rodam sozinhas** quando o site sobe; um banco criado antes das
+migrações existirem é reconhecido e atualizado sem perder dados.
 
 ### Alguém esqueceu a senha
 No **Bash console**:
