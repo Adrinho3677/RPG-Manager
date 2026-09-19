@@ -128,9 +128,9 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-São 116 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
-edição simultânea, histórico, combate, permissões, anotações secretas, rolagens, convite,
-limite de login, exportação, importação e upload.
+São mais de 160 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
+edição simultânea, histórico, combate, mapa tático, permissões, anotações secretas, rolagens,
+convite, limite de login, validação de e-mail, exportação, importação e upload.
 Cada teste usa um banco temporário próprio — o seu banco real nunca é tocado.
 
 ---
@@ -149,8 +149,12 @@ O caminho final deve ficar `/home/SEU_USUARIO/RPG-Manager`.
 ### 2. Crie o virtualenv e instale as dependências
 
 ```bash
-mkvirtualenv rpgmanager --python=/usr/bin/python3.11
+mkvirtualenv rpgmanager --python=python3.11
 ```
+
+> Use `python3.11`, não `/usr/bin/python3.11`: em contas com imagem de sistema mais nova o
+> caminho fixo cria um virtualenv quebrado (`pip` falha com `No module named
+> '_posixsubprocess'`).
 
 ```bash
 pip install -r /home/SEU_USUARIO/RPG-Manager/requirements.txt
