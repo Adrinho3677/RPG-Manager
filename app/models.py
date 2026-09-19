@@ -335,6 +335,9 @@ class Encounter(db.Model):
     round_number = db.Column(db.Integer, default=1)
     turn_index = db.Column(db.Integer, default=0)
     combatants = db.Column(JSONField, default=list)
+    # Mapa tático: imagem, grade, posições das fichas e névoa. Coluna separada
+    # dos combatentes para mover uma ficha não brigar com o rastreador.
+    board = db.Column(JSONField, nullable=True)
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

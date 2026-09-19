@@ -103,7 +103,12 @@ def can_see(asset, user):
         return False
     if campaign.is_master(user):
         return True
-    return asset.visibility == "mesa" and campaign.can_view(user)
+    if not campaign.can_view(user):
+        return False
+    if asset.visibility == "mesa":
+        return True
+    # Mapa escondido na galeria mas posto num mapa tático: a mesa precisa vê-lo.
+    return any((e.board or {}).get("map_id") == asset.id for e in campaign.encounters)
 
 
 @bp.route(Asset.URL_PREFIX + "<token>")

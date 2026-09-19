@@ -8,12 +8,13 @@ from flask import (Blueprint, abort, flash, jsonify, redirect, render_template,
 from flask_login import current_user, login_required
 from sqlalchemy import and_, or_
 
+from app import board as board_helper
 from app import dice
 from app import security
 from app import sheet as sheet_helper
 from app.blueprints.uploads import remove_file
 from app.extensions import db
-from app.models import (Campaign, CampaignMember, Character, Encounter, GameSession,
+from app.models import (Asset, Campaign, CampaignMember, Character, Encounter, GameSession,
                         GameSystem, Note, NoteRecipient, RollLog, SessionAttendance,
                         TimelineEntry, User)
 from app.utils import slugify, to_int
@@ -714,6 +715,17 @@ def encounter_state(encounter, is_master, messages=None):
     """
     campaign = encounter.campaign
     combatants = list(encounter.combatants or [])
+    turn_index = encounter.turn_index or 0
+    if not is_master:
+        # Ficha escondida no mapa tático é segredo também no rastreador: o
+        # jogador nem fica sabendo que existe. O índice do turno é refeito
+        # sobre a lista que ele recebe (-1 = vez de alguém escondido).
+        tokens = board_helper.normalize(encounter.board)["tokens"]
+        hidden = {uid for uid, pos in tokens.items() if pos["hidden"]}
+        if hidden:
+            active = combatants[turn_index]["uid"] if 0 <= turn_index < len(combatants) else None
+            combatants = [c for c in combatants if c.get("uid") not in hidden]
+            turn_index = next((i for i, c in enumerate(combatants) if c.get("uid") == active), -1)
     ids = {c.get("character_id") for c in combatants if c.get("character_id")}
     sheets = {}
     if ids:
@@ -751,7 +763,7 @@ def encounter_state(encounter, is_master, messages=None):
         "ok": True,
         "name": encounter.name,
         "round_number": encounter.round_number,
-        "turn_index": encounter.turn_index,
+        "turn_index": turn_index,
         "combatants": out,
         "messages": messages or [],
     }
@@ -780,6 +792,7 @@ def encounters(campaign_id):
         is_master=is_master,
         encounters=items,
         states={e.id: encounter_state(e, is_master) for e in items},
+        boards={e.id: board_payload(campaign, e) for e in items},
         roster=roster,
     )
 
@@ -965,6 +978,100 @@ def encounter_delete(campaign_id, encounter_id):
     db.session.commit()
     flash("Combate removido.", "success")
     return redirect(url_for("campaigns.encounters", campaign_id=campaign.id))
+
+
+# ------------------------------------------------------------------ mapa tático
+def campaign_maps(campaign):
+    return {a.id: a for a in campaign.assets.filter(Asset.kind == "mapa")
+            .order_by(Asset.created_at).all()}
+
+
+def board_payload(campaign, encounter):
+    is_master = campaign.is_master(current_user)
+    state = encounter_state(encounter, is_master)
+    return board_helper.view(encounter, state, current_user, is_master, campaign_maps(campaign))
+
+
+def board_change(campaign, encounter, change):
+    try:
+        board_helper.update(encounter, change)
+    except board_helper.BoardError as error:
+        return jsonify({"ok": False, "message": str(error)}), 400
+    return jsonify(board_payload(campaign, encounter))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa")
+@login_required
+def board_state(campaign_id, encounter_id):
+    campaign = get_campaign(campaign_id)
+    encounter = get_encounter(campaign, encounter_id)
+    return jsonify(board_payload(campaign, encounter))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/mover", methods=["POST"])
+@login_required
+def board_move(campaign_id, encounter_id):
+    """Move (ou tira do mapa) uma ficha.
+
+    O mestre move qualquer uma. O jogador, só as fichas dele — e só se o
+    mestre não travou o mapa nem escondeu a ficha.
+    """
+    campaign = get_campaign(campaign_id)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    uid = str(payload.get("uid") or "")[:16]
+    combatant = next((c for c in encounter.combatants or [] if c.get("uid") == uid), None)
+    if combatant is None:
+        return jsonify({"ok": False, "message": "Essa ficha não está no combate."}), 404
+
+    if not campaign.is_master(current_user):
+        sheet = (db.session.get(Character, combatant["character_id"])
+                 if combatant.get("character_id") else None)
+        board = board_helper.normalize(encounter.board)
+        token = board["tokens"].get(uid) or {}
+        if sheet is None or sheet.owner_id != current_user.id or sheet.campaign_id != campaign.id:
+            abort(403)
+        if not board["players_move"] or token.get("hidden"):
+            return jsonify({"ok": False, "message": "O mestre travou o mapa."}), 403
+
+    x, y = payload.get("x"), payload.get("y")
+    return board_change(campaign, encounter, lambda b: board_helper.move(b, uid, x, y))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/configurar", methods=["POST"])
+@login_required
+def board_configure(campaign_id, encounter_id):
+    campaign = get_campaign(campaign_id, master_only=True)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    maps = set(campaign_maps(campaign))
+    return board_change(campaign, encounter,
+                        lambda b: board_helper.configure(b, payload, maps))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/esconder", methods=["POST"])
+@login_required
+def board_hide(campaign_id, encounter_id):
+    campaign = get_campaign(campaign_id, master_only=True)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    uid = str(payload.get("uid") or "")[:16]
+    return board_change(campaign, encounter,
+                        lambda b: board_helper.set_hidden(b, uid, payload.get("hidden")))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/nevoa", methods=["POST"])
+@login_required
+def board_fog(campaign_id, encounter_id):
+    campaign = get_campaign(campaign_id, master_only=True)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    reveal = bool(payload.get("reveal"))
+    if payload.get("all"):
+        return board_change(campaign, encounter, lambda b: board_helper.fog_all(b, reveal))
+    cells = payload.get("cells") if isinstance(payload.get("cells"), list) else []
+    return board_change(campaign, encounter,
+                        lambda b: board_helper.paint_fog(b, cells, reveal))
 
 
 # --------------------------------------------------------------- rolagens da mesa

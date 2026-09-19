@@ -137,7 +137,8 @@ def build_document(campaign):
         "fichas": characters,
         "sessoes": sessions,
         "anotacoes": notes,
-        "combates": [{"nome": e.name, "rodada": e.round_number, "combatentes": e.combatants or []}
+        "combates": [{"nome": e.name, "rodada": e.round_number, "combatentes": e.combatants or [],
+                      "mapa_tatico": e.board}
                      for e in campaign.encounters.order_by(Encounter.created_at).all()],
         "linha_do_tempo": [{"quando_no_jogo": t.label, "titulo": t.title, "texto": t.body,
                             "autor": t.author.username, "registrado": _stamp(t.created_at)}

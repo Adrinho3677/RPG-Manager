@@ -73,6 +73,88 @@
       </div>
     {% endif %}
 
+
+    {% set board = boards[encounter.id] %}
+    <details class="board-panel" data-board {% if board.tokens or board.map_url or loop.first %}open{% endif %}
+             data-state-url="{{ url_for('campaigns.board_state', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-move-url="{{ url_for('campaigns.board_move', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             {% if is_master %}
+             data-config-url="{{ url_for('campaigns.board_configure', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-hide-url="{{ url_for('campaigns.board_hide', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-fog-url="{{ url_for('campaigns.board_fog', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             {% endif %}>
+      <summary><span>🗺️ Mapa tático</span><span class="board-status" data-board-status></span></summary>
+
+      <div class="board-toolbar">
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm btn-icon" type="button" data-board-action="zoom-out" title="Diminuir">−</button>
+          <button class="btn btn-ghost btn-sm btn-icon" type="button" data-board-action="zoom-in" title="Aumentar">+</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-board-action="full">⛶ Tela cheia</button>
+          {% if is_master %}
+            <span class="board-fog-tools" data-fog-tools hidden>
+              <button class="btn btn-ghost btn-sm active" type="button" data-board-mode="move">✋ Mover</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="reveal">☀ Revelar</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="cover">☁ Cobrir</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-action="reveal-all">Revelar tudo</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-action="cover-all">Cobrir tudo</button>
+            </span>
+          {% endif %}
+        </div>
+        <p class="muted small board-info" data-board-info></p>
+      </div>
+
+      {% if is_master %}
+        <details class="board-config">
+          <summary>⚙️ Configurar mapa</summary>
+          <div class="board-config-grid" data-board-config>
+            <div class="field">
+              <label>Imagem de fundo</label>
+              <select name="map_id" aria-label="Imagem de fundo"></select>
+              <span class="hint">Envie imagens em <a href="{{ url_for('uploads.gallery', campaign_id=campaign.id) }}">Mapas</a>.
+                Mapa escondido na galeria fica visível para a mesa enquanto estiver aqui.</span>
+            </div>
+            <div class="field">
+              <label>Quadrados (largura × altura)</label>
+              <div class="board-pair">
+                <input type="number" name="cols" min="1" max="60" aria-label="Colunas">
+                <span class="muted">×</span>
+                <input type="number" name="rows" min="1" max="60" aria-label="Linhas">
+                <button class="btn btn-ghost btn-sm" type="button" data-board-action="fit-image"
+                        title="Calcula a altura pela proporção da imagem">Ajustar à imagem</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Cada quadrado vale</label>
+              <div class="board-pair">
+                <input type="text" inputmode="decimal" name="cell_size" aria-label="Tamanho do quadrado">
+                <input type="text" name="cell_unit" maxlength="8" placeholder="m" aria-label="Unidade">
+              </div>
+            </div>
+            <div class="field board-checks">
+              <label class="check"><input type="checkbox" name="grid"> Mostrar grade</label>
+              <label class="check"><input type="checkbox" name="fog"> Névoa de guerra</label>
+              <label class="check"><input type="checkbox" name="players_move"> Jogadores movem as próprias fichas</label>
+            </div>
+          </div>
+        </details>
+      {% endif %}
+
+      <div class="board-bench" data-board-bench hidden></div>
+      <div class="board-selected" data-board-selected hidden></div>
+
+      <div class="board-scroll" data-board-scroll>
+        <div class="board-surface" data-board-surface>
+          <img class="board-image" data-board-image alt="" hidden draggable="false">
+          <div class="board-grid"></div>
+          <canvas class="board-fog" data-board-fog></canvas>
+          <div class="board-tokens" data-board-tokens></div>
+        </div>
+      </div>
+      <p class="hint">Arraste uma ficha, ou toque nela e depois no quadrado de destino.
+        {% if is_master %}Fichas do rastreador que ainda não estão no mapa aparecem acima dele.{% endif %}</p>
+      <script type="application/json" data-board-payload>{{ board|tojson }}</script>
+    </details>
+
     <script type="application/json" data-payload>{{ states[encounter.id]|tojson }}</script>
   </div>
 {% else %}
@@ -91,4 +173,5 @@
 </script>
 <script src="{{ url_for('static', filename='js/dice.js') }}"></script>
 <script src="{{ url_for('static', filename='js/encounter.js') }}"></script>
+<script src="{{ url_for('static', filename='js/board.js') }}"></script>
 {% endblock %}

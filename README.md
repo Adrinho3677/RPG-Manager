@@ -75,6 +75,19 @@ pode fazer **rolagens secretas**.
 - **Combate**: PJs e NPCs entram **ligados à ficha** — dano no rastreador vai para o PV deles.
   Condições com duração perdem uma rodada por rodada e somem quando acabam. Jogadores
   acompanham ao vivo, mas **não recebem o PV dos inimigos**, só "ileso / ferido / grave".
+- **Mapa tático** em cada combate: a imagem do mapa com grade por cima e as fichas do
+  rastreador como peças. Arraste (ou toque na ficha e depois no quadrado — melhor no celular);
+  enquanto arrasta, mostra a distância ("5 quadrados (7,5 m)"). Todos veem os movimentos ao
+  vivo. O mestre:
+  - ajusta a grade à imagem, a escala do quadrado e se jogadores movem as próprias fichas;
+  - **esconde fichas** — some para os jogadores no mapa *e* na ordem de iniciativa;
+  - pinta a **névoa de guerra** ("Revelar" / "Cobrir"): inimigos debaixo dela não chegam ao
+    navegador dos jogadores. O grupo aparece sempre.
+  - usa a **tela cheia** para mostrar o mapa numa TV na mesa.
+
+  A névoa esconde as *fichas*, não a imagem: a imagem do mapa é baixada inteira. Um jogador
+  curioso que abra o arquivo da imagem vê o mapa todo — para salas realmente secretas, use um
+  mapa separado.
 - **Mapas**: galeria de imagens da campanha, que o mestre pode guardar e revelar depois.
 - **Linha do tempo** e **mesa**.
 - **Convite por link**: quem abre faz login ou cria a conta e volta direto para confirmar a
@@ -324,4 +337,3 @@ algum modelo ficou sem migração.
 ## No radar
 
 - **Instalar como app (PWA)**: ícone na tela inicial e tela cheia no celular.
-- **Mapa tático**: fichas arrastáveis sobre a imagem do mapa durante o combate.
