@@ -158,6 +158,27 @@
         </div>
 
         <div class="card">
+          <h3>⚔️ Combates preparados</h3>
+          {% for encounter in prepared %}
+            <a class="list-item" href="{{ url_for('campaigns.encounters', campaign_id=campaign.id) }}#e{{ encounter.id }}">
+              <span><strong>{{ encounter.name }}</strong>
+                <span class="meta">{{ encounter.combatants|length }} combatente(s){% if encounter.board and encounter.board.map_id %} · com mapa{% endif %}</span></span>
+              <span class="tag tag-gold">abrir</span>
+            </a>
+          {% else %}
+            <p class="muted small">Monte os combates antes: criaturas, iniciativa e mapa prontos — na hora é só abrir.</p>
+          {% endfor %}
+          <div class="field-row" style="margin-top:.5rem">
+            <div class="field" style="margin:0">
+              <input type="text" name="name" form="prep-form" maxlength="160" placeholder="Ex.: Emboscada na ponte"
+                     aria-label="Nome do combate preparado">
+            </div>
+            <div class="field" style="margin:0">
+              <button class="btn btn-gold btn-sm btn-block" type="submit" form="prep-form">+ Preparar</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
           <h3>Atalhos</h3>
           <a class="btn btn-ghost btn-block btn-sm" href="{{ url_for('campaigns.encounters', campaign_id=campaign.id) }}">Abrir combate</a>
           <a class="btn btn-ghost btn-block btn-sm" style="margin-top:.4rem" href="{{ url_for('campaigns.notes', campaign_id=campaign.id) }}">Anotações</a>
@@ -176,6 +197,11 @@
 
   {# Fica fora do formulário da sessão porque HTML não permite form aninhado;
      os campos lá em cima se ligam a ele pelo atributo form="xp-form". #}
+  <form method="post" id="prep-form"
+        action="{{ url_for('campaigns.session_encounter', campaign_id=campaign.id, session_id=session.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+
   <form method="post" id="xp-form"
         action="{{ url_for('campaigns.session_xp', campaign_id=campaign.id, session_id=session.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

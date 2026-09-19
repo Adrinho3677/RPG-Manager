@@ -89,7 +89,7 @@
       state.combatants.forEach(function (c, index) {
         var linked = !!c.character_id;
         var row = el("div", "combatant" + (index === state.turn_index ? " turn" : "") +
-                            (linked ? " linked" : ""));
+                            (linked ? " linked" : "") + (c.delayed ? " delayed" : ""));
 
         row.appendChild(field(c.init, function (v) { c.init = v; },
           { type: "number", title: "Iniciativa", "aria-label": "Iniciativa" }));
@@ -105,6 +105,14 @@
           if (linked && editable) nameBox.appendChild(el("span", "tag tag-accent", "ficha"));
         }
         nameBox.appendChild(conditionsNode(c));
+        if (c.delayed) nameBox.appendChild(el("span", "tag tag-gold", "⏸ aguardando"));
+        if (editable) {
+          var delay = el("button", "btn btn-ghost btn-sm delay-btn", c.delayed ? "▶ agir agora" : "⏸");
+          delay.type = "button";
+          delay.title = c.delayed ? "Entra na ordem agora, na vez atual" : "Atrasar o turno (sai da ordem até agir)";
+          delay.addEventListener("click", function () { toggleDelay(index); });
+          nameBox.appendChild(delay);
+        }
         row.appendChild(nameBox);
 
         if (c.hp !== undefined) {
@@ -150,6 +158,44 @@
       if (turnLabel) {
         var current = state.combatants[state.turn_index];
         turnLabel.textContent = current ? "Vez de " + (current.name || "?") : "";
+      }
+    }
+
+    /* Atrasar turno: quem está aguardando é pulado pelo "Próximo turno" e, ao
+       agir, entra na ordem logo na vez atual (com a mesma iniciativa de quem
+       estava na vez, para a ordenação do servidor manter a posição). */
+    function toggleDelay(index) {
+      var c = state.combatants[index];
+      if (!c.delayed) {
+        c.delayed = true;
+        if (index === state.turn_index) advance(1, true);
+      } else {
+        c.delayed = false;
+        state.combatants.splice(index, 1);
+        var at = state.turn_index > index ? state.turn_index - 1 : state.turn_index;
+        var current = state.combatants[at];
+        if (current) c.init = current.init;
+        state.combatants.splice(at, 0, c);
+        state.turn_index = at;
+      }
+      render();
+      save();
+    }
+
+    function advance(step, fromDelay) {
+      var total = state.combatants.length;
+      if (!total) return;
+      var active = state.combatants.filter(function (c) { return !c.delayed; }).length;
+      for (var guard = 0; guard < total; guard++) {
+        state.turn_index += step;
+        if (state.turn_index >= total) {
+          state.turn_index = 0;
+          state.round_number = Number(state.round_number || 1) + 1;
+        } else if (state.turn_index < 0) {
+          state.turn_index = total - 1;
+          state.round_number = Math.max(1, Number(state.round_number || 1) - 1);
+        }
+        if (!active || !state.combatants[state.turn_index].delayed) break;
       }
     }
 
@@ -245,19 +291,7 @@
           save();
           return;
         }
-        if (action === "next") {
-          state.turn_index += 1;
-          if (state.turn_index >= state.combatants.length) {
-            state.turn_index = 0;
-            state.round_number = Number(state.round_number || 1) + 1;
-          }
-        } else {
-          state.turn_index -= 1;
-          if (state.turn_index < 0) {
-            state.turn_index = state.combatants.length - 1;
-            state.round_number = Math.max(1, Number(state.round_number || 1) - 1);
-          }
-        }
+        advance(action === "next" ? 1 : -1);
         render();
         save();
       } else if (action === "initiative") {

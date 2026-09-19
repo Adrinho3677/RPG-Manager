@@ -230,7 +230,7 @@ def test_normalize_ignora_lixo():
                                     "cell_size": "nan"})
     assert board["cols"] == 20 and board["rows"] == 1
     assert board["revealed"] == []  # rows virou 1: "1,1" caiu fora da grade
-    assert board["tokens"] == {"a": {"x": 19, "y": 0, "hidden": False}}
+    assert board["tokens"] == {"a": {"x": 19, "y": 0, "hidden": False, "size": 1}}
 
 
 def test_exportacao_leva_o_mapa(mesa):

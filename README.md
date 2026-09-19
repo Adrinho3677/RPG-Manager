@@ -126,6 +126,33 @@ pode fazer **rolagens secretas**.
   **entrega** a ficha na tela *Mesa*. (Entregar sozinho pelo nome de usuário seria perigoso:
   qualquer um cria uma conta chamada "ana".) Não voltam: as pessoas da mesa, presenças e
   rolagens.
+- **📺 Tela da TV**: mapa em tela cheia, iniciativa, relógios, últimas rolagens e handouts —
+  **exatamente o que os jogadores veem**, mesmo com o mestre logado na TV (nada escondido
+  aparece). Botão "📺 TV" no topo de cada campanha.
+- **📜 Tabelas aleatórias** do mestre ("Encontros na estrada": `1-3: Lobos`, `4: Bandidos`…):
+  um clique rola e o resultado vai para o registro da mesa. Só do mestre (rola em segredo) ou
+  abertas para a mesa.
+- **🎲 Rolagens mais ricas**: `1d20+1d4+2`, vantagem/desvantagem (`2d20kh1` / `2d20kl1`, ou o
+  seletor no painel, que segue a regra de cada sistema), `4d6kh3`, dados que explodem (`3d6!`),
+  `d%` e, na ficha, siglas dos atributos (`1d20+FOR`).
+- **🤫 Sussurros**: o jogador fala só com o mestre (e o mestre responde a um jogador), no painel
+  de rolagens. O jogador também pode rolar "só o mestre vê".
+- **⏸ Atrasar o turno**: tira alguém da ordem; "▶ agir agora" o põe de volta na vez atual.
+- No mapa: **criaturas grandes** (2×2 a 4×4), **régua de deslocamento** (área verde até onde a
+  ficha anda, lida do campo "Deslocamento" da ficha), **setas do teclado** para mover e
+  **↶ Desfazer** (Ctrl+Z) — o jogador desfaz os movimentos dele; o mestre, os de qualquer um.
+- **📚 Bestiário entre campanhas**: copie NPCs e criaturas de outras campanhas suas do mesmo
+  sistema, sem refazer a ficha.
+- **⚔️ Combates preparados**: no roteiro da sessão, prepare os combates antes (criaturas, mapa,
+  iniciativa); na hora é só abrir.
+- **📅 Lembrete de sessão**: o painel mostra "Sessão 5 é amanhã às 19h. Você vai?" com os botões
+  de resposta — sem depender de e-mail. Com e-mail configurado, também chega por e-mail, com
+  links que confirmam sem entrar no site.
+- **🔒 Diário do personagem**: anotação "só eu" — **nem o mestre lê**, nem vai na exportação.
+- **Sair de todos os aparelhos** (em Minha conta); trocar a senha já desconecta os outros.
+- **⚙️ Administração** (só para o administrador do site): erros recentes com detalhes, usuários
+  com "senha temporária" (sem precisar do console), espaço em disco, limpeza de arquivos que
+  sobraram e **download do backup** — o ⚙️ do topo acende quando faz mais de 7 dias sem baixar.
 - **Esqueci minha senha**: link por e-mail, que vale 1 hora e funciona uma vez só (precisa
   configurar o envio — veja abaixo).
 
@@ -168,10 +195,23 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-São mais de 200 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
-edição simultânea, histórico, combate, mapa tático, permissões, anotações secretas, rolagens,
-convite, limite de login, validação de e-mail, exportação, importação e upload.
+São quase 260 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
+edição simultânea, histórico, combate, mapa tático, permissões, anotações secretas e diário,
+rolagens, sussurros, convite, limite de login, validação de e-mail, exportação, importação,
+upload, administração e manutenção.
 Cada teste usa um banco temporário próprio — o seu banco real nunca é tocado.
+
+**Testes no navegador** (`tests/e2e`): o site sobe de verdade numa porta local e um navegador
+sem janela clica nas telas, com mestre e jogador ao mesmo tempo — é o que pega bug de
+JavaScript. Usam o **Edge** (ou Chrome) já instalado; nada é baixado além do pacote do
+Playwright, que vem no `requirements-dev.txt`. Sem navegador, são pulados.
+
+```bash
+python -m pytest tests/e2e
+```
+
+Para ver o navegador clicando: `E2E_HEADED=1`. Para usar o Chrome: `E2E_BROWSER=chrome`.
+Para pular esses (são os mais lentos): `python -m pytest -m "not e2e"`.
 
 ---
 
@@ -254,16 +294,34 @@ Na aba **Web**, em **Static files**:
 ### 6. Recarregue
 Botão verde **Reload**. O site fica em `https://SEU_USUARIO.pythonanywhere.com`.
 
-### 7. Backup diário
-Na aba **Tasks**, crie uma tarefa diária (o plano gratuito permite uma):
+### 7. Tarefa diária (backup, lembretes e limpeza)
+Na aba **Tasks**, crie **uma** tarefa diária — o plano gratuito só permite uma, por isso o
+comando faz tudo de uma vez:
 
 ```bash
-cd /home/SEU_USUARIO/RPG-Manager && /home/SEU_USUARIO/.virtualenvs/rpgmanager/bin/flask backup
+cd /home/SEU_USUARIO/RPG-Manager && /home/SEU_USUARIO/.virtualenvs/rpgmanager/bin/flask manutencao
 ```
 
-Guarda cópias em `instance/backups/`, mantendo as 14 mais recentes (`BACKUP_KEEP`). A cópia
-usa a API de backup do SQLite, segura mesmo com o site no ar. Baixe uma de vez em quando pela
-aba **Files** — backup que só existe no mesmo servidor não protege de tudo.
+- **Backup** em `instance/backups/`, mantendo os 14 mais recentes (`BACKUP_KEEP`), pela API de
+  backup do SQLite (seguro com o site no ar);
+- **lembretes de sessão por e-mail** (só se houver e-mail configurado);
+- **limpeza** de retratos sem uso, uploads órfãos e cópias velhas da névoa;
+- às segundas, **backup por e-mail** para o administrador (só com e-mail, e se couber).
+
+Se você já tinha a tarefa com `flask backup`, troque por `flask manutencao`.
+
+Backup que só existe no mesmo servidor não protege de tudo: **baixe um de vez em quando** em
+⚙️ → *Baixar backup* (o ⚙️ do topo acende quando passa de 7 dias).
+
+### Administrador do site
+A página ⚙️ (`/admin`) é só do administrador: por padrão, **a primeira conta criada**. Para
+escolher, ponha no arquivo WSGI:
+
+```python
+os.environ['ADMIN_USERNAMES'] = 'SeuUsuario'
+```
+
+(vários, separados por vírgula). Para os outros, a página nem existe (404).
 
 ### Atualizando depois de mudar o código
 
@@ -350,6 +408,7 @@ O comando `flask backup` só funciona com SQLite; no MySQL use o backup da aba *
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | — | Conta que envia (no Gmail, senha de app). |
 | `MAIL_FROM` | `MAIL_USERNAME` | Remetente mostrado. |
 | `SITE_URL` | endereço da requisição | Endereço público, usado nos links dos e-mails. |
+| `ADMIN_USERNAMES` | a primeira conta | Quem acessa a administração (⚙️). |
 
 ---
 
@@ -374,10 +433,14 @@ RPG-Manager/
 │   ├── export.py          exportar campanha (ZIP)
 │   ├── importer.py        importar campanha
 │   ├── mail.py            envio de e-mail
+│   ├── tables.py          tabelas aleatórias
+│   ├── reminders.py       lembretes de sessão (painel e e-mail)
+│   ├── maintenance.py     erros, limpeza, backup para baixar, administrador
 │   ├── blueprints/        auth, main, systems, campaigns, characters, uploads,
-│   │                      table (relógios, handout, tesouro, calendário), live (consulta única)
+│   │                      table (relógios, handout, tesouro, calendário, tabelas, sussurros),
+│   │                      live (consulta única), admin
 │   ├── static/js/         app.js (cliente HTTP + consulta única + handout), sheet.js, dice.js,
-│   │                      encounter.js, board.js, clocks.js, treasure.js, system-editor.js
+│   │                      encounter.js, board.js, clocks.js, treasure.js, tv.js, system-editor.js
 │   └── templates/
 ├── migrations/            histórico do banco (Alembic)
 ├── tests/                 pytest

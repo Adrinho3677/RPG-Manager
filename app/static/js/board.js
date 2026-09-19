@@ -52,7 +52,8 @@
     return d > 180 ? 360 - d : d;
   }
   function areaHits(area, token) {
-    var dx = token.x + 0.5 - area.ox, dy = token.y + 0.5 - area.oy;
+    var half = (token.size || 1) / 2;
+    var dx = token.x + half - area.ox, dy = token.y + half - area.oy;
     var dist = Math.sqrt(dx * dx + dy * dy);
     if (area.shape === "circle") return dist <= area.size + 1e-6;
     var rad = area.angle * Math.PI / 180;
@@ -99,8 +100,12 @@
       hide: panel.dataset.hideUrl,
       fog: panel.dataset.fogUrl,
       area: panel.dataset.areaUrl,
-      marker: panel.dataset.markerUrl
+      marker: panel.dataset.markerUrl,
+      undo: panel.dataset.undoUrl
     };
+    var reachCanvas = panel.querySelector("[data-board-reach]");
+    var readonly = panel.dataset.readonly === "1";   // tela da TV: só mostra
+    var view = panel.dataset.view || "";             // "mesa": visão dos jogadores
     var markerLayer = panel.querySelector("[data-board-markers]");
     var areaLayer = panel.querySelector("[data-board-areas]");
     var areaList = panel.querySelector("[data-board-area-list]");
@@ -143,6 +148,34 @@
     }
 
     /* ------------------------------------------------------------ desenho */
+    /* Até onde a ficha selecionada anda: quadrados a no máximo "deslocamento"
+       de distância (diagonal conta 1, como na régua). */
+    function drawReach() {
+      var width = state.cols * cell, height = state.rows * cell;
+      var ratio = window.devicePixelRatio || 1;
+      reachCanvas.width = Math.round(width * ratio);
+      reachCanvas.height = Math.round(height * ratio);
+      reachCanvas.style.width = width + "px";
+      reachCanvas.style.height = height + "px";
+      var ctx = reachCanvas.getContext("2d");
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      var token = selected && findToken(selected);
+      if (!token || token.x === undefined || !token.speed || !token.can_move || drag) return;
+      var reach = Math.floor(token.speed + 1e-6), size = token.size || 1;
+      ctx.fillStyle = "rgba(63, 178, 127, .22)";
+      ctx.strokeStyle = "rgba(63, 178, 127, .55)";
+      for (var y = 0; y < state.rows; y++) {
+        for (var x = 0; x < state.cols; x++) {
+          var dx = x < token.x ? token.x - x : Math.max(0, x - (token.x + size - 1));
+          var dy = y < token.y ? token.y - y : Math.max(0, y - (token.y + size - 1));
+          if (Math.max(dx, dy) <= reach && (dx || dy)) {
+            ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+          }
+        }
+      }
+    }
+
     function drawFog() {
       var width = state.cols * cell, height = state.rows * cell;
       var ratio = window.devicePixelRatio || 1;
@@ -213,8 +246,10 @@
         var key = token.x + "," + token.y;
         var n = stacks[key] = (stacks[key] || 0) + 1;
         var node = tokenNode(token);
-        var shift = (n - 1) * Math.max(4, cell * .18);  // empilhadas: leve deslocamento
-        node.style.width = node.style.height = cell + "px";
+        var size = token.size || 1;
+        var shift = size === 1 ? (n - 1) * Math.max(4, cell * .18) : 0;  // empilhadas: leve deslocamento
+        node.style.width = node.style.height = size * cell + "px";
+        if (size > 1) node.classList.add("is-large");
         node.style.transform = "translate(" + (token.x * cell + shift) + "px," +
                                               (token.y * cell + shift) + "px)";
         layer.appendChild(node);
@@ -352,7 +387,24 @@
       selectedBox.appendChild(el("strong", "", token.name));
       selectedBox.appendChild(el("span", "muted small", onBoard
         ? "toque num quadrado para mover" : "toque num quadrado para colocar no mapa"));
+      if (onBoard && token.speed) {
+        selectedBox.appendChild(el("span", "tag tag-ok", "anda " + formatNumber(token.speed) +
+          (token.speed === 1 ? " quadrado" : " quadrados") +
+          (state.cell_size ? " (" + formatNumber(token.speed * state.cell_size) + " " + state.cell_unit + ")" : "")));
+      }
       if (state.is_master && onBoard) {
+        var sizeSelect = el("select", "token-size");
+        sizeSelect.setAttribute("aria-label", "Tamanho da criatura");
+        [1, 2, 3, 4].forEach(function (n) {
+          var option = el("option", "", n + "×" + n + (n === 1 ? " (normal)" : n === 2 ? " (grande)" : n === 3 ? " (enorme)" : " (imensa)"));
+          option.value = n;
+          if ((token.size || 1) === n) option.selected = true;
+          sizeSelect.appendChild(option);
+        });
+        sizeSelect.addEventListener("change", function () {
+          send(urls.hide, { uid: token.uid, size: Number(sizeSelect.value) });
+        });
+        selectedBox.appendChild(sizeSelect);
         var hide = el("button", "btn btn-ghost btn-sm", token.hidden ? "👁 Mostrar" : "🙈 Esconder");
         hide.type = "button";
         hide.addEventListener("click", function () {
@@ -376,8 +428,17 @@
       selectedBox.appendChild(close);
     }
 
+    function fitCell() {
+      // TV: o mapa inteiro cabe na tela, sem rolagem.
+      var box = scroller.getBoundingClientRect();
+      var available = Math.max(200, window.innerHeight - box.top - 12);
+      var size = Math.floor(Math.min(scroller.clientWidth / state.cols, available / state.rows));
+      return Math.max(ZOOM_MIN, Math.min(160, size));
+    }
+
     function render() {
       if (!state) return;
+      if (panel.dataset.fit) cell = fitCell();
       var width = state.cols * cell, height = state.rows * cell;
       boardEl.style.width = width + "px";
       boardEl.style.height = height + "px";
@@ -391,6 +452,7 @@
         image.hidden = true;
         image.removeAttribute("src");
       }
+      drawReach();
       drawFog();
       renderMarkers();
       renderAreas();
@@ -551,6 +613,9 @@
     function placeSelected(target) {
       var token = findToken(selected);
       if (!token || !token.can_move) return false;
+      var size = token.size || 1;
+      target = { x: Math.max(0, Math.min(state.cols - size, target.x)),
+                 y: Math.max(0, Math.min(state.rows - size, target.y)) };
       if (token.x === target.x && token.y === target.y) return true;
       token.x = target.x;  // otimista: a resposta do servidor confirma
       token.y = target.y;
@@ -586,7 +651,7 @@
     }
 
     boardEl.addEventListener("pointerdown", function (event) {
-      if (!state || event.button > 0) return;
+      if (!state || event.button > 0 || readonly) return;
       var target = cellAt(event);
       var tokenEl = event.target.closest(".token");
 
@@ -635,9 +700,11 @@
       if (tokenEl) {
         var token = findToken(tokenEl.dataset.uid);
         if (!token) return;
+        var grabbed = cellAt(event) || { x: token.x, y: token.y };
         drag = { uid: token.uid, node: tokenEl, from: { x: token.x, y: token.y },
                  startX: event.clientX, startY: event.clientY, moved: false,
-                 pointer: event.pointerId, can: token.can_move };
+                 pointer: event.pointerId, can: token.can_move,
+                 grab: { x: Math.max(0, grabbed.x - (token.x || 0)), y: Math.max(0, grabbed.y - (token.y || 0)) } };
         if (token.can_move) {
           event.preventDefault();
           capture(event);
@@ -676,10 +743,10 @@
       if (!drag.uid || !drag.can) return;
       drag.node.classList.add("is-dragging");
       var rect = boardEl.getBoundingClientRect();
-      drag.node.style.transform = "translate(" + (event.clientX - rect.left - cell / 2) + "px," +
-                                                 (event.clientY - rect.top - cell / 2) + "px)";
+      drag.node.style.transform = "translate(" + (event.clientX - rect.left - (drag.grab.x + .5) * cell) + "px," +
+                                                 (event.clientY - rect.top - (drag.grab.y + .5) * cell) + "px)";
       var over = cellAt(event);
-      if (over) info.textContent = "↔ " + distance(drag.from, over);
+      if (over) info.textContent = "↔ " + distance(drag.from, { x: over.x - drag.grab.x, y: over.y - drag.grab.y });
     });
 
     function endPointer(event, cancelled) {
@@ -708,6 +775,7 @@
 
       if (current.uid && current.moved && current.can) {
         selected = current.uid;
+        if (target) target = { x: target.x - current.grab.x, y: target.y - current.grab.y };
         if (!target || !placeSelected(target)) render();
         return;
       }
@@ -776,11 +844,36 @@
       } else if (action === "reveal-all" || action === "cover-all") {
         if (action === "cover-all" && !confirm("Cobrir o mapa inteiro de névoa?")) return;
         send(urls.fog, { all: true, reveal: action === "reveal-all" });
+      } else if (action === "undo") {
+        send(urls.undo, {});
       } else if (action === "fit-image") {
         if (!image.naturalWidth || !state) return;
         var rows = Math.round(state.cols * image.naturalHeight / image.naturalWidth);
         send(urls.config, { rows: Math.max(1, rows) });
       }
+    });
+
+    function typing() {
+      var tag = (document.activeElement || {}).tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    }
+
+    var ARROWS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    // Com vários combates na página, o teclado vale só para o último mapa usado.
+    panel.addEventListener("pointerdown", function () { window.__lastBoard = panel; }, true);
+    document.addEventListener("keydown", function (event) {
+      if (!state || !panel.open || typing() || readonly) return;
+      if (window.__lastBoard && window.__lastBoard !== panel) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && urls.undo) {
+        event.preventDefault();
+        send(urls.undo, {});
+        return;
+      }
+      var step = ARROWS[event.key];
+      var token = selected && findToken(selected);
+      if (!step || !token || token.x === undefined || !token.can_move) return;
+      event.preventDefault();  // não rola a página
+      placeSelected({ x: token.x + step[0], y: token.y + step[1] });
     });
 
     document.addEventListener("keydown", function (event) {
@@ -794,6 +887,13 @@
       if (panel.open) refresh(true);
     });
 
+    if (panel.dataset.fit) {
+      var resizeTimer = null;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(render, 150);
+      });
+    }
     try {
       adopt(JSON.parse(panel.querySelector("[data-board-payload]").textContent));
     } catch (e) {
@@ -802,7 +902,7 @@
     var owner = panel.closest("[data-encounter-id]");
     if (window.Live && window.Live.enabled && owner) {
       // Novidades do mapa chegam junto com o resto da página (uma requisição só).
-      var liveHandle = window.Live.register("board", owner.dataset.encounterId, function (data) {
+      var liveHandle = window.Live.register("board", owner.dataset.encounterId + (view ? "." + view : ""), function (data) {
         if (busy || drag || paint || aiming) { liveHandle.reset(); return; }
         adopt(data);
       }, { fast: true });

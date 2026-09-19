@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Erro · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>{{ report.summary }}</h2>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.index') }}#erros">Voltar</a>
+  </div>
+  <p class="muted small">{{ report.method }} {{ report.path }} · {{ report.count }} vez(es) ·
+    primeira {{ report.first_at|hora }} · última {{ report.last_at|hora }}</p>
+  <pre class="traceback">{{ report.traceback }}</pre>
+</div>
+{% endblock %}

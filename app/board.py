@@ -15,6 +15,7 @@ O estado fica em Encounter.board (JSON):
     areas         áreas de efeito [{id, shape (circle|cone|line), ox, oy, angle, size,
                   owner, who}] — origem e tamanho em quadrados
     markers       {id: {type, x, y, label, hidden}} — portas, armadilhas etc.
+    history       últimos movimentos [{uid, fx, fy, by}] — para desfazer
     version       sobe a cada mudança
 
 As fichas do mapa SÃO os combatentes do rastreador (mesmo uid): nada de
@@ -44,8 +45,11 @@ DEFAULTS = {
     "tokens": {},
     "areas": [],
     "markers": {},
+    "history": [],
     "version": 0,
 }
+MAX_TOKEN_SIZE = 4   # criaturas grandes ocupam 2×2, 3×3 ou 4×4 quadrados
+MAX_HISTORY = 30
 MAX_AREAS = 30
 MAX_MARKERS = 80
 AREA_SHAPES = ("circle", "cone", "line")
@@ -96,12 +100,22 @@ def normalize(raw):
     for uid, pos in (raw.get("tokens") or {}).items():
         if not isinstance(pos, dict):
             continue
+        size = _clamp(to_int(pos.get("size"), 1), 1, MAX_TOKEN_SIZE)
         tokens[str(uid)[:16]] = {
-            "x": _clamp(to_int(pos.get("x"), 0), 0, board["cols"] - 1),
-            "y": _clamp(to_int(pos.get("y"), 0), 0, board["rows"] - 1),
+            "x": _clamp(to_int(pos.get("x"), 0), 0, max(0, board["cols"] - size)),
+            "y": _clamp(to_int(pos.get("y"), 0), 0, max(0, board["rows"] - size)),
             "hidden": bool(pos.get("hidden")),
+            "size": size,
         }
     board["tokens"] = tokens
+    history = []
+    for entry in raw.get("history") or []:
+        if isinstance(entry, dict) and entry.get("uid"):
+            history.append({"uid": str(entry["uid"])[:16],
+                            "fx": None if entry.get("fx") is None else to_int(entry.get("fx"), 0),
+                            "fy": None if entry.get("fy") is None else to_int(entry.get("fy"), 0),
+                            "by": to_int(entry.get("by"), 0)})
+    board["history"] = history[-MAX_HISTORY:]
 
     areas = []
     for area in raw.get("areas") or []:
@@ -160,17 +174,54 @@ def configure(board, payload, map_ids):
     return normalize(board)
 
 
-def move(board, uid, x, y):
-    """x/y None tira a ficha do mapa."""
+def footprint(pos):
+    """Quadrados ocupados por uma ficha (criatura grande ocupa vários)."""
+    size = pos.get("size", 1)
+    return [(pos["x"] + dx, pos["y"] + dy) for dx in range(size) for dy in range(size)]
+
+
+def move(board, uid, x, y, by=0):
+    """x/y None tira a ficha do mapa. Guarda de onde veio, para desfazer."""
+    current = board["tokens"].get(uid)
+    before = (current["x"], current["y"]) if current else (None, None)
     if x is None or y is None:
         board["tokens"].pop(uid, None)
-        return board
-    x, y = to_int(x, -1), to_int(y, -1)
-    if not (0 <= x < board["cols"] and 0 <= y < board["rows"]):
-        raise BoardError("Fora do mapa.")
-    current = board["tokens"].get(uid) or {}
-    board["tokens"][uid] = {"x": x, "y": y, "hidden": bool(current.get("hidden"))}
+    else:
+        x, y = to_int(x, -1), to_int(y, -1)
+        size = (current or {}).get("size", 1)
+        if not (0 <= x <= board["cols"] - size and 0 <= y <= board["rows"] - size):
+            raise BoardError("Fora do mapa.")
+        board["tokens"][uid] = {"x": x, "y": y, "hidden": bool((current or {}).get("hidden")),
+                                "size": size}
+    if before != (x, y):
+        board["history"].append({"uid": uid, "fx": before[0], "fy": before[1], "by": by})
+        del board["history"][:-MAX_HISTORY]
     return board
+
+
+def undo(board, user_id, is_master, allowed):
+    """Desfaz o último movimento desta pessoa (o mestre desfaz o último de qualquer um).
+
+    `allowed(uid)` diz se a pessoa ainda pode mexer naquela ficha.
+    """
+    for index in range(len(board["history"]) - 1, -1, -1):
+        entry = board["history"][index]
+        if not is_master and entry["by"] != user_id:
+            continue
+        if not allowed(entry["uid"]):
+            continue
+        del board["history"][index]
+        current = board["tokens"].get(entry["uid"])
+        if entry["fx"] is None:
+            board["tokens"].pop(entry["uid"], None)
+        else:
+            size = (current or {}).get("size", 1)
+            board["tokens"][entry["uid"]] = {
+                "x": _clamp(entry["fx"], 0, max(0, board["cols"] - size)),
+                "y": _clamp(entry["fy"], 0, max(0, board["rows"] - size)),
+                "hidden": bool((current or {}).get("hidden")), "size": size}
+        return board
+    raise BoardError("Nada para desfazer.")
 
 
 def set_hidden(board, uid, hidden):
@@ -178,6 +229,27 @@ def set_hidden(board, uid, hidden):
         raise BoardError("Essa ficha não está no mapa.")
     board["tokens"][uid]["hidden"] = bool(hidden)
     return board
+
+
+def set_size(board, uid, size):
+    token = board["tokens"].get(uid)
+    if token is None:
+        raise BoardError("Essa ficha não está no mapa.")
+    size = _clamp(to_int(size, 1), 1, MAX_TOKEN_SIZE)
+    token["size"] = size
+    token["x"] = _clamp(token["x"], 0, max(0, board["cols"] - size))
+    token["y"] = _clamp(token["y"], 0, max(0, board["rows"] - size))
+    return board
+
+
+def parse_speed(text, cell_size):
+    """ "9 m", "9m", "18 metros", "30" → quadrados (9 m ÷ 1,5 m = 6). None se não houver número."""
+    import re
+    match = re.search(r"(\d+(?:[.,]\d+)?)", str(text or ""))
+    if not match or not cell_size:
+        return None
+    value = float(match.group(1).replace(",", "."))
+    return round(value / cell_size, 2) if value > 0 else None
 
 
 def paint_fog(board, cells, reveal):
@@ -334,7 +406,7 @@ def view(encounter, state, user, is_master, maps):
             if hidden and not mine:
                 continue
             if (pos and board["fog"] and c.get("kind") != "pj" and not mine
-                    and _cell(pos["x"], pos["y"]) not in revealed):
+                    and not any(_cell(x, y) in revealed for x, y in footprint(pos))):
                 continue
         portrait = sheet or sheets.get(c.get("source_id"))
         item = {
@@ -345,6 +417,9 @@ def view(encounter, state, user, is_master, maps):
             "mine": mine and not is_master,  # o selo "sua ficha" só faz sentido para jogador
             "can_move": is_master or (mine and board["players_move"] and not hidden),
             "avatar": _avatar(portrait.avatar_url) if portrait else "",
+            # Deslocamento da ficha em quadrados, para a régua de movimento.
+            "speed": parse_speed(((portrait.data or {}).get("meta") or {}).get("deslocamento"),
+                                 board["cell_size"]) if portrait else None,
             "conditions": [x.get("name") for x in c.get("conditions") or []],
         }
         if "hp" in c:
@@ -353,7 +428,7 @@ def view(encounter, state, user, is_master, maps):
         else:
             item["health"] = c.get("health")
         if pos:
-            item.update(x=pos["x"], y=pos["y"])
+            item.update(x=pos["x"], y=pos["y"], size=pos.get("size", 1))
             if is_master:
                 item["hidden"] = hidden
             tokens.append(item)

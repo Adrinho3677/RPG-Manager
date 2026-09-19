@@ -166,7 +166,8 @@
       if (!data || data.seq <= seen) return;
       seen = data.seq;
       try { localStorage.setItem(SEEN_KEY, String(seen)); } catch (e) {}
-      if (data.by === Live.userId) return;  // quem mostrou já está vendo
+      // Quem mostrou já está vendo — menos na tela da TV, que é para a mesa.
+      if (data.by === Live.userId && !document.querySelector("[data-tv-root]")) return;
       showHandout(data);
     }, { mark: seen || "" });
   }

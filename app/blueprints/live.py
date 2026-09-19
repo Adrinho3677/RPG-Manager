@@ -8,7 +8,8 @@ vez só, dizendo o que está mostrando e o que já tem:
 
     GET /campanhas/<id>/ao-vivo?s=rolls:0:12,enc:3:ab12cd,board:3:,clocks::ef01
 
-Cada item é nome:argumento:marca. A marca é o que a tela já tem (o id da última
+Cada item é nome:argumento:marca. Argumento terminado em ".mesa" (ou "mesa")
+pede a visão da mesa — o que os jogadores veem —, usada pela tela da TV. A marca é o que a tela já tem (o id da última
 rolagem, ou o resumo do último estado). Se nada mudou a seção volta como
 {"same": true} e o navegador não redesenha nada.
 """
@@ -41,7 +42,7 @@ def _versioned(value, token):
 # ------------------------------------------------------------------ seções
 def section_rolls(campaign, is_master, arg, token):
     from app.blueprints.campaigns import recent_rolls
-    result = recent_rolls(campaign, is_master, to_int(token, 0))
+    result = recent_rolls(campaign, is_master, to_int(token, 0), public_only=arg == "mesa")
     if token and not result["rolls"]:
         return {"same": True}
     return {"mark": str(result["last"]), "data": result["rolls"]}
@@ -49,14 +50,16 @@ def section_rolls(campaign, is_master, arg, token):
 
 def section_encounter(campaign, is_master, arg, token):
     from app.blueprints.campaigns import encounter_state, get_encounter
-    encounter = get_encounter(campaign, to_int(arg, 0))
-    return _versioned(encounter_state(encounter, is_master), token)
+    encounter_id, _, view = arg.partition(".")
+    encounter = get_encounter(campaign, to_int(encounter_id, 0))
+    return _versioned(encounter_state(encounter, is_master and view != "mesa"), token)
 
 
 def section_board(campaign, is_master, arg, token):
     from app.blueprints.campaigns import board_payload, get_encounter
-    encounter = get_encounter(campaign, to_int(arg, 0))
-    return _versioned(board_payload(campaign, encounter), token)
+    encounter_id, _, view = arg.partition(".")
+    encounter = get_encounter(campaign, to_int(encounter_id, 0))
+    return _versioned(board_payload(campaign, encounter, public=view == "mesa"), token)
 
 
 def section_sheet(campaign, is_master, arg, token):
@@ -72,7 +75,7 @@ def section_sheet(campaign, is_master, arg, token):
 
 def section_clocks(campaign, is_master, arg, token):
     from app.blueprints.table import clocks_payload
-    return _versioned(clocks_payload(campaign, is_master), token)
+    return _versioned(clocks_payload(campaign, is_master and arg != "mesa"), token)
 
 
 def section_spotlight(campaign, is_master, arg, token):
@@ -88,6 +91,27 @@ def section_treasure(campaign, is_master, arg, token):
     return _versioned(treasure_payload(campaign), token)
 
 
+def section_whispers(campaign, is_master, arg, token):
+    """Sussurros em que eu sou remetente ou destinatário — ninguém mais recebe."""
+    from sqlalchemy import or_
+    from app.models import Whisper
+    since = to_int(token, 0)
+    me = current_user.id
+    query = Whisper.query.filter(Whisper.campaign_id == campaign.id,
+                                 or_(Whisper.sender_id == me, Whisper.recipient_id == me))
+    if since:
+        items = query.filter(Whisper.id > since).order_by(Whisper.id.asc()).limit(50).all()
+        if not items:
+            return {"same": True}
+    else:
+        items = list(reversed(query.order_by(Whisper.id.desc()).limit(20).all()))
+    data = {"items": [w.as_dict() for w in items]}
+    if not since and is_master:
+        data["people"] = [{"id": m.user_id, "name": m.user.username}
+                          for m in campaign.members.all() if m.user and m.user_id != campaign.master_id]
+    return {"mark": str(items[-1].id if items else since), "data": data}
+
+
 SECTIONS = {
     "rolls": section_rolls,
     "enc": section_encounter,
@@ -96,6 +120,7 @@ SECTIONS = {
     "clocks": section_clocks,
     "spot": section_spotlight,
     "treasure": section_treasure,
+    "whispers": section_whispers,
 }
 
 

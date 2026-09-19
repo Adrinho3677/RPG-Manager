@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} · TV{% endblock %}
+{% block content %}
+<div class="tv" data-tv-root
+     {% if encounter %}data-encounter-id="{{ encounter.id }}"{% endif %}>
+  <header class="tv-head">
+    <div>
+      <h1>{{ campaign.name }}</h1>
+      {% if world %}<span class="tv-world">📅 {{ world }}</span>{% endif %}
+    </div>
+    <div class="tv-turn" data-tv-turn></div>
+    <div class="tv-controls">
+      {% if encounters|length > 1 %}
+        <select data-tv-choose aria-label="Combate mostrado">
+          {% for item in encounters %}
+            <option value="{{ url_for('campaigns.tv', campaign_id=campaign.id, combate=item.id) }}"
+                    {% if encounter and item.id == encounter.id %}selected{% endif %}>{{ item.name }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
+      <button class="btn btn-ghost btn-sm" type="button" data-tv-full title="Tela cheia (F11 também funciona)">⛶</button>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.overview', campaign_id=campaign.id) }}" title="Sair da tela da TV">✕</a>
+    </div>
+  </header>
+
+  <div class="tv-body">
+    <main class="tv-map">
+      {% if encounter and board %}
+        <details class="board-panel tv-board" data-board open data-readonly="1" data-view="mesa" data-fit="1"
+                 data-state-url="{{ url_for('campaigns.board_state', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+                 data-move-url="">
+          <summary hidden></summary>
+          <div class="board-bench" data-board-bench hidden></div>
+          <div class="board-selected" data-board-selected hidden></div>
+          <p class="board-info" data-board-info hidden></p>
+          <span data-board-status hidden></span>
+          <div class="board-scroll" data-board-scroll>
+            <div class="board-surface" data-board-surface>
+              <img class="board-image" data-board-image alt="" hidden draggable="false">
+              <div class="board-grid"></div>
+              <canvas class="board-reach" data-board-reach></canvas>
+              <canvas class="board-fog" data-board-fog></canvas>
+              <div class="board-markers" data-board-markers></div>
+              <svg class="board-areas" data-board-areas aria-hidden="true"></svg>
+              <div class="board-tokens" data-board-tokens></div>
+            </div>
+          </div>
+          <div class="board-area-list" data-board-area-list hidden></div>
+          <script type="application/json" data-board-payload>{{ board|tojson }}</script>
+        </details>
+      {% else %}
+        <div class="tv-empty">
+          <p>Nenhum combate ainda.</p>
+          <p class="muted">Os relógios, as rolagens e o que o mestre mostrar aparecem aqui.</p>
+        </div>
+      {% endif %}
+    </main>
+
+    <aside class="tv-side">
+      {% if encounter %}
+        <section class="tv-card">
+          <h2>Iniciativa · rodada <span data-tv-round>{{ state.round_number }}</span></h2>
+          <ol class="tv-order" data-tv-order></ol>
+          <script type="application/json" data-tv-state>{{ state|tojson }}</script>
+        </section>
+      {% endif %}
+      <section class="tv-card tv-clocks" data-clocks data-master="0" data-view="mesa"
+               data-create-url="" data-update-url="">
+        <h2>Relógios</h2>
+        <div class="clock-list" data-clock-list></div>
+        <script type="application/json" data-clock-payload>{{ clock_list(campaign, False)|tojson }}</script>
+      </section>
+      <section class="tv-card">
+        <h2>Rolagens</h2>
+        <div class="tv-rolls" data-tv-rolls></div>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/board.js') }}"></script>
+<script src="{{ url_for('static', filename='js/clocks.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tv.js') }}"></script>
+{% endblock %}

@@ -172,6 +172,7 @@ def reset(token):
             flash("As senhas não conferem.", "error")
         else:
             user.set_password(new)
+            user.end_other_sessions()  # quem estava logado com a senha antiga sai
             db.session.commit()
             # Sucesso limpa as tentativas erradas desta conta: quem estava
             # bloqueado por errar a senha consegue entrar agora.
@@ -210,10 +211,25 @@ def account():
             flash("As senhas novas não conferem.", "error")
         else:
             current_user.set_password(new)
+            # Trocar a senha derruba as outras sessões (o celular esquecido
+            # logado na casa de alguém, por exemplo); esta continua.
+            current_user.end_other_sessions()
             db.session.commit()
-            flash("Senha alterada.", "success")
+            login_user(current_user, remember=True)
+            flash("Senha alterada. Outros aparelhos conectados foram desconectados.", "success")
             return redirect(url_for("main.dashboard"))
     return render_template("auth/account.html")
+
+
+@bp.route("/conta/sair-de-todos", methods=["POST"])
+@login_required
+def logout_everywhere():
+    """Desconecta todos os aparelhos, inclusive "continuar conectado"."""
+    current_user.end_other_sessions()
+    db.session.commit()
+    logout_user()
+    flash("Você saiu de todos os aparelhos. Entre de novo aqui.", "success")
+    return redirect(url_for("auth.login"))
 
 
 @bp.route("/sair")

@@ -26,6 +26,10 @@
         <a href="{{ url_for('systems.index') }}">Sistemas</a>
       </nav>
       <div class="topbar-user">
+        {% if is_site_admin() %}
+          <a class="btn btn-ghost btn-sm admin-link {{ 'nag' if backup_nag() }}" href="{{ url_for('admin.index') }}"
+             title="{{ 'Faz tempo que você não baixa um backup' if backup_nag() else 'Administração do site' }}">⚙️{% if backup_nag() %} backup{% endif %}</a>
+        {% endif %}
         <a class="user-chip" href="{{ url_for('auth.account') }}" title="Minha conta">{{ current_user.username }}</a>
         <a class="btn btn-ghost btn-sm" href="{{ url_for('auth.logout') }}">Sair</a>
       </div>

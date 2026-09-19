@@ -3,6 +3,8 @@
 
     flask backup                       copia o banco para instance/backups
     flask redefinir-senha USUARIO      gera uma senha nova para alguém
+    flask limpar                       apaga arquivos que sobraram no disco
+    flask manutencao                   tudo de uma vez (a tarefa diária)
 """
 import os
 import secrets
@@ -67,6 +69,31 @@ def make_backup(app):
 
 
 def register_commands(app):
+    @app.cli.command("limpar")
+    @click.option("--simular", is_flag=True, help="Só mostra o que seria apagado.")
+    def cleanup_command(simular):
+        """Apaga retratos sem uso, uploads órfãos e cópias velhas da névoa."""
+        from app import maintenance
+        result = maintenance.cleanup(dry_run=simular)
+        click.echo("%s %d arquivo(s), %.1f MB." % ("Seriam apagados" if simular else "Apagados",
+                                                  result["files"], result["bytes"] / 1048576.0))
+
+    @app.cli.command("manutencao")
+    def maintenance_command():
+        """A tarefa diária: backup, lembretes de sessão e limpeza (o plano gratuito só tem uma)."""
+        from app import maintenance, reminders
+        try:
+            target = make_backup(app)
+            click.echo("Backup: %s" % target)
+        except click.ClickException as error:
+            click.echo("Backup: %s" % error.message)
+        click.echo("Lembretes por e-mail enviados: %d" % reminders.send_due())
+        result = maintenance.cleanup()
+        click.echo("Limpeza: %d arquivo(s), %.1f MB." % (result["files"], result["bytes"] / 1048576.0))
+        from datetime import date
+        if date.today().weekday() == 0:  # segunda-feira: backup por e-mail, se houver e-mail
+            click.echo("Backup por e-mail: %d" % maintenance.email_backup())
+
     @app.cli.command("backup")
     def backup_command():
         """Faz uma cópia do banco e mantém só as mais recentes."""
@@ -92,6 +119,7 @@ def register_commands(app):
         if len(nova) < 6:
             raise click.ClickException("A senha precisa de pelo menos 6 caracteres.")
         user.set_password(nova)
+        user.end_other_sessions()
         db.session.commit()
 
         click.echo("Senha de %s redefinida." % user.username)

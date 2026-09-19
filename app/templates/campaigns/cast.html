@@ -75,6 +75,34 @@
   {% endif %}
 </div>
 
+{% if is_master %}
+  <div class="card">
+    <div class="card-head"><h3>📚 Trazer do meu bestiário</h3></div>
+    {% if library %}
+      <p class="muted small">NPCs e criaturas das suas outras campanhas de {{ campaign.system.name }}.
+        Vem uma cópia: a original não muda.</p>
+      <form method="post" action="{{ url_for('campaigns.cast_copy', campaign_id=campaign.id) }}" class="field-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field" style="margin:0">
+          <select name="character_id" aria-label="Ficha para copiar">
+            {% for other, found in library %}
+              <optgroup label="{{ other.name }}">
+                {% for character in found %}
+                  <option value="{{ character.id }}">{{ character.name }} ({{ character.kind }})</option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field" style="margin:0"><button class="btn btn-gold btn-block" type="submit">Copiar para cá</button></div>
+      </form>
+    {% else %}
+      <p class="muted small">Quando você tiver outras campanhas de {{ campaign.system.name }} com NPCs
+        ou criaturas, dá para copiá-los para cá sem refazer a ficha.</p>
+    {% endif %}
+  </div>
+{% endif %}
+
 {% if is_master and not encounters %}
   <p class="hint">Para mandar alguém ao combate, crie um rastreador na aba
     <a href="{{ url_for('campaigns.encounters', campaign_id=campaign.id) }}">Combate</a>.</p>

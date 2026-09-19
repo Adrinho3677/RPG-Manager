@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Presença · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:520px">
+  <div class="card center">
+    <p class="muted small">{{ campaign.name }} · {{ user.username }}</p>
+    <h1>Sessão {{ item.number }}: {{ item.title }}</h1>
+    <p class="muted">É {{ when }}.</p>
+    {% if done %}
+      <p class="notice-ok">Resposta registrada: <strong>{{ done }}</strong>.</p>
+      <p class="muted small">Mudou de ideia? É só escolher outra abaixo.</p>
+    {% else %}
+      <p>Você vai?</p>
+    {% endif %}
+    <form method="post" class="actions" style="justify-content:center">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for value, label in statuses %}
+        <button class="btn {{ 'btn-gold' if value == chosen else 'btn-ghost' }}" type="submit" name="status" value="{{ value }}">{{ label }}</button>
+      {% endfor %}
+    </form>
+  </div>
+</div>
+{% endblock %}

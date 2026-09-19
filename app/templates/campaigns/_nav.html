@@ -10,6 +10,8 @@
     {% if is_master %}
       <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.edit', campaign_id=campaign.id) }}">Configurar</a>
     {% endif %}
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.tv', campaign_id=campaign.id) }}" target="_blank"
+       rel="noopener" title="Tela para mostrar na TV da mesa">📺 TV</a>
     <a class="btn btn-primary btn-sm" href="{{ url_for('characters.create', campanha=campaign.id) }}">+ Ficha</a>
   </div>
 </div>
@@ -28,6 +30,8 @@
      class="{{ 'active' if page == 'campaigns.encounters' }}">Combate</a>
   <a href="{{ url_for('uploads.gallery', campaign_id=campaign.id) }}"
      class="{{ 'active' if page == 'uploads.gallery' }}">Mapas</a>
+  <a href="{{ url_for('table.random_tables', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'table.random_tables' }}">Tabelas</a>
   <a href="{{ url_for('table.treasure', campaign_id=campaign.id) }}"
      class="{{ 'active' if page == 'table.treasure' }}">Tesouro</a>
   <a href="{{ url_for('table.calendar', campaign_id=campaign.id) }}"

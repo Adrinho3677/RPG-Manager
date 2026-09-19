@@ -13,6 +13,26 @@
   </div>
 </div>
 
+{% for item, campaign, when in pending %}
+  <div class="card reminder">
+    <div>
+      <span class="muted small">📅 {{ campaign.name }}</span>
+      <strong>Sessão {{ item.number }} — {{ item.title }} é {{ when }}. Você vai?</strong>
+    </div>
+    <div class="actions">
+      {% for value, label in attendance_statuses %}
+        <form method="post" action="{{ url_for('campaigns.session_attendance', campaign_id=campaign.id, session_id=item.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="{{ value }}">
+          <input type="hidden" name="next" value="{{ url_for('main.dashboard') }}">
+          <button class="btn btn-sm {{ 'btn-gold' if value == 'vou' else 'btn-ghost' }}" type="submit">{{ label }}</button>
+        </form>
+      {% endfor %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.session_detail', campaign_id=campaign.id, session_id=item.id) }}">Ver sessão</a>
+    </div>
+  </div>
+{% endfor %}
+
 <div class="split">
   <div>
     <div class="card">

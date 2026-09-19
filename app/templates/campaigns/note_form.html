@@ -53,6 +53,15 @@
     <div class="field">
       <label class="check"><input type="checkbox" name="pinned" {% if note and note.pinned %}checked{% endif %}> Fixar na visão geral</label>
     </div>
+    {% if not is_master and (not note or note.author_id == current_user.id) %}
+      {% set current = note.visibility if note else 'mesa' %}
+      <fieldset class="visibility">
+        <legend>Quem pode ler</legend>
+        <label class="check"><input type="radio" name="visibility" value="mesa" {% if current != 'privada' %}checked{% endif %}> Toda a mesa</label>
+        <label class="check"><input type="radio" name="visibility" value="privada" {% if current == 'privada' %}checked{% endif %}>
+          🔒 Só eu — diário do personagem (nem o mestre lê)</label>
+      </fieldset>
+    {% endif %}
     {% if is_master %}
       {% set current = note.visibility if note else 'mesa' %}
       <fieldset class="visibility" data-visibility>

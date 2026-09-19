@@ -96,7 +96,9 @@ def build_document(campaign):
         })
 
     notes = []
-    for note in campaign.notes.order_by(Note.created_at).all():
+    # Diário privado dos jogadores não vai: nem o mestre pode ler.
+    for note in (campaign.notes.filter((Note.visibility != "privada") | (Note.author_id == campaign.master_id))
+                 .order_by(Note.created_at).all()):
         notes.append({
             "titulo": note.title,
             "texto": note.body,

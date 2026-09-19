@@ -4,7 +4,7 @@ from datetime import date
 from flask import Blueprint, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
-from app.models import Campaign, Character, GameSession, GameSystem
+from app.models import SessionAttendance, Campaign, Character, GameSession, GameSystem
 
 bp = Blueprint("main", __name__)
 
@@ -37,6 +37,9 @@ def dashboard():
         .all()
     )
 
+    from app import reminders
+    pending = [(item, campaign, reminders.when_label(item))
+               for item, campaign in reminders.pending_for(current_user)]
     campaign_ids = [c.id for c in mastering] + [c.id for c in playing]
     upcoming = []
     if campaign_ids:
@@ -52,6 +55,8 @@ def dashboard():
 
     return render_template(
         "main/dashboard.html",
+        attendance_statuses=SessionAttendance.STATUSES,
+        pending=pending,
         mastering=mastering,
         playing=playing,
         characters=characters,

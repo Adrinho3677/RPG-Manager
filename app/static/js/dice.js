@@ -20,6 +20,26 @@
 
   var POLL_MS = 4000;
   var panel, entries, secretBox, lastId = 0, seen = {}, pollTimer = null, failures = 0;
+  var mode = "";            // "", "vantagem" ou "desvantagem" (vale para as rolagens da ficha)
+  var seenWhispers = {};
+
+  function renderWhisper(w) {
+    ensurePanel();
+    if (seenWhispers[w.id]) return;
+    seenWhispers[w.id] = true;
+    var mine = global.Live && w.from_id === global.Live.userId;
+    var entry = document.createElement("div");
+    entry.className = "roll-entry whisper" + (mine ? " mine" : "");
+    entry.innerHTML = '<div class="who"></div><div class="det"></div>';
+    entry.querySelector(".who").textContent = "🤫 " + (mine ? "você → " + w.to : w.from + " sussurrou");
+    entry.querySelector(".det").textContent = w.text;
+    entries.insertBefore(entry, entries.firstChild);
+    if (!mine) {
+      var last = panel.querySelector("[data-last]");
+      if (last) last.textContent = "· 🤫 " + w.from;
+      panel.classList.add("has-whisper");
+    }
+  }
 
   function ensurePanel() {
     if (panel) return;
@@ -30,11 +50,27 @@
       '<span class="last" data-last></span></span>' +
       '<button class="btn btn-ghost btn-sm btn-icon" type="button" data-toggle title="Recolher">—</button></header>' +
       '<div class="entries"></div>' +
+      '<div class="roll-modes" role="group" aria-label="Vantagem">' +
+      '<button type="button" class="active" data-mode="">Normal</button>' +
+      '<button type="button" data-mode="vantagem">Vantagem</button>' +
+      '<button type="button" data-mode="desvantagem">Desvantagem</button></div>' +
       '<div class="roll-manual">' +
-      '<input type="text" placeholder="2d6+3" data-formula aria-label="Fórmula de dados">' +
+      '<input type="text" placeholder="2d6+3 · 2d20kh1 · 1d20+FOR" data-formula aria-label="Fórmula de dados">' +
       '<button class="btn btn-gold btn-sm" type="button" data-manual>Rolar</button></div>' +
-      (config.is_master
-        ? '<label class="roll-secret"><input type="checkbox" data-secret> rolagem secreta (só você vê)</label>'
+      '<details class="roll-help"><summary>Fórmulas</summary>' +
+      '<p><code>2d6+3</code> soma · <code>1d20+1d4+2</code> vários dados · <code>2d20kh1</code> fica com o maior ' +
+      '(vantagem) · <code>2d20kl1</code> com o menor · <code>4d6kh3</code> · <code>3d6!</code> dado que explode · ' +
+      '<code>d%</code> · na ficha, siglas: <code>1d20+FOR</code></p></details>' +
+      (config.feed_url
+        ? '<label class="roll-secret"><input type="checkbox" data-secret> ' +
+          (config.is_master ? 'rolagem secreta (só você vê)' : 'só o mestre vê') + '</label>'
+        : '') +
+      (config.whisper_url
+        ? '<div class="whisper-box">' +
+          (config.is_master ? '<select data-whisper-to aria-label="Sussurrar para"></select>' : '') +
+          '<input type="text" maxlength="500" data-whisper aria-label="Sussurro" placeholder="' +
+          (config.is_master ? 'Sussurrar para um jogador…' : '🤫 Sussurrar ao mestre…') + '">' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-whisper-send>Enviar</button></div>'
         : '');
     document.body.appendChild(panel);
     document.body.classList.add("has-roll-log");
@@ -42,8 +78,36 @@
     secretBox = panel.querySelector("[data-secret]");
 
     panel.querySelector("header").addEventListener("click", function () {
+      panel.classList.remove("has-whisper");
       panel.classList.toggle("collapsed");  // o cabeçalho inteiro abre e fecha — alvo maior no celular
     });
+    panel.querySelectorAll("[data-mode]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        mode = button.dataset.mode;
+        panel.querySelectorAll("[data-mode]").forEach(function (b) {
+          b.classList.toggle("active", b === button);
+        });
+      });
+    });
+    var whisperInput = panel.querySelector("[data-whisper]");
+    if (whisperInput) {
+      var sendWhisper = function () {
+        var text = whisperInput.value.trim();
+        if (!text) return;
+        var body = { text: text };
+        var to = panel.querySelector("[data-whisper-to]");
+        if (to) body.to = Number(to.value);
+        global.api(config.whisper_url, { body: body }).then(function (data) {
+          if (!data.ok) { error(data.message); return; }
+          whisperInput.value = "";
+          renderWhisper(data.whisper);
+        }).catch(function () { error("sem conexão com o servidor"); });
+      };
+      panel.querySelector("[data-whisper-send]").addEventListener("click", sendWhisper);
+      whisperInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") { event.preventDefault(); sendWhisper(); }
+      });
+    }
     var manualInput = panel.querySelector("[data-formula]");
     function manual() {
       var text = manualInput.value.trim();
@@ -107,10 +171,11 @@
 
   function roll(label, dice, bonus, target) {
     send(config.roll_url, {
-      label: label,
+      label: label + (mode ? " (" + mode + ")" : ""),
       dice: Number(dice) || 0,
       bonus: Number(bonus) || 0,
-      target: target === undefined ? null : Number(target)
+      target: target === undefined ? null : Number(target),
+      mode: mode
     });
   }
 
@@ -147,6 +212,27 @@
       global.Live.register("rolls", "", function (rolls) {
         (rolls || []).forEach(function (r) { render(r, false); });
       }, { fast: true });
+      if (config.whisper_url) {
+        global.Live.register("whispers", "", function (data) {
+          var select = panel.querySelector("[data-whisper-to]");
+          if (select && data.people) {
+            select.innerHTML = "";
+            data.people.forEach(function (p) {
+              var option = document.createElement("option");
+              option.value = p.id;
+              option.textContent = p.name;
+              select.appendChild(option);
+            });
+            if (!data.people.length) {
+              var none = document.createElement("option");
+              none.textContent = "ninguém na mesa";
+              none.value = "";
+              select.appendChild(none);
+            }
+          }
+          (data.items || []).forEach(renderWhisper);
+        });
+      }
     } else {
       poll();
       document.addEventListener("visibilitychange", function () {

@@ -41,7 +41,17 @@ def create_app(config_class=Config):
 
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(models.User, int(user_id))
+        # "id:versão". A versão sobe ao trocar a senha ou pedir "sair de todos os
+        # aparelhos", e aí os cookies antigos param de valer. Cookie sem versão
+        # (de antes disso existir) vale enquanto a conta estiver na versão 0.
+        raw_id, _, version = str(user_id).partition(":")
+        try:
+            user = db.session.get(models.User, int(raw_id))
+        except ValueError:
+            return None
+        if user is None or int(version or 0) != (user.session_version or 0):
+            return None
+        return user
 
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.main import bp as main_bp
@@ -51,6 +61,7 @@ def create_app(config_class=Config):
     from app.blueprints.uploads import bp as uploads_bp
     from app.blueprints.live import bp as live_bp
     from app.blueprints.table import bp as table_bp
+    from app.blueprints.admin import bp as admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -60,6 +71,7 @@ def create_app(config_class=Config):
     app.register_blueprint(uploads_bp)
     app.register_blueprint(live_bp)
     app.register_blueprint(table_bp)
+    app.register_blueprint(admin_bp)
 
     register_filters(app)
     register_errors(app)
@@ -214,6 +226,8 @@ def register_errors(app):
     @app.errorhandler(500)
     def server_error(error):
         db.session.rollback()
+        from app import maintenance
+        maintenance.record_error(getattr(error, "original_exception", None) or error)
         if wants_json():
             return jsonify({"ok": False, "error": "server"}), 500
         return render_template("errors/error.html", code=500,

@@ -67,3 +67,7 @@ class Config:
     # Endereço público do site, usado nos links dos e-mails. Sem ele, usa o
     # endereço da própria requisição.
     SITE_URL = os.environ.get("SITE_URL", "").rstrip("/")
+
+    # Administradores do site (página /admin: erros, usuários, limpeza, backup).
+    # Nomes de usuário separados por vírgula; vazio = a primeira conta criada.
+    ADMIN_USERNAMES = os.environ.get("ADMIN_USERNAMES", "")

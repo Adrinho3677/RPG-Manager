@@ -34,7 +34,9 @@
             <h3>{% if note.pinned %}📌 {% endif %}{{ note.title }}</h3>
             <span class="tags">
               <span class="tag">{{ dict(categories).get(note.category, note.category) }}</span>
-              {% if note.visibility == 'mestre' %}
+              {% if note.visibility == 'privada' %}
+                <span class="tag tag-accent">🔒 só você</span>
+              {% elif note.visibility == 'mestre' %}
                 <span class="tag tag-danger">só mestre</span>
               {% elif note.visibility == 'jogadores' %}
                 {% if is_master %}

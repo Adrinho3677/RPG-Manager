@@ -150,7 +150,7 @@
     }
 
     if (window.Live && window.Live.enabled) {
-      window.Live.register("clocks", "", function (data) {
+      window.Live.register("clocks", root.dataset.view || "", function (data) {
         clocks = data || [];
         render();
       });

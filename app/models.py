@@ -36,6 +36,9 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), unique=True, nullable=False, index=True)
     email = db.Column(db.String(160), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
+    # Sobe ao trocar a senha ou pedir "sair de todos os aparelhos": vai dentro do
+    # cookie de sessão (get_id), e cookie com número velho deixa de valer.
+    session_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     systems = db.relationship("GameSystem", back_populates="owner", lazy="dynamic")
@@ -49,6 +52,12 @@ class User(UserMixin, db.Model):
 
     def check_password(self, raw):
         return check_password_hash(self.password_hash, raw)
+
+    def get_id(self):
+        return "%d:%d" % (self.id, self.session_version or 0)
+
+    def end_other_sessions(self):
+        self.session_version = (self.session_version or 0) + 1
 
     @property
     def campaigns(self):
@@ -265,6 +274,7 @@ class GameSession(db.Model):
     recap = db.Column(db.Text, default="")
     beats = db.Column(JSONField, default=list)
     world_day = db.Column(db.Integer, nullable=True)  # data no calendário do mundo
+    reminded_at = db.Column(db.DateTime, nullable=True)  # lembrete por e-mail já enviado
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     campaign = db.relationship("Campaign", back_populates="sessions")
@@ -304,7 +314,8 @@ class Note(db.Model):
     body = db.Column(db.Text, default="")
     category = db.Column(db.String(40), default="geral")
     tags = db.Column(db.String(240), default="")
-    visibility = db.Column(db.String(16), default="mesa")  # mesa | mestre | jogadores
+    # mesa | mestre | jogadores | privada (diário: só quem escreveu — nem o mestre)
+    visibility = db.Column(db.String(16), default="mesa")
     revealed_at = db.Column(db.DateTime, nullable=True)
     pinned = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -321,7 +332,11 @@ class Note(db.Model):
         return {r.user_id for r in self.recipients}
 
     def visible_to(self, user, is_master):
-        if is_master or self.author_id == getattr(user, "id", None):
+        if self.author_id == getattr(user, "id", None):
+            return True
+        if self.visibility == "privada":
+            return False  # nem o mestre
+        if is_master:
             return True
         if self.visibility == "mesa":
             return True
@@ -352,10 +367,14 @@ class Encounter(db.Model):
     # Mapa tático: imagem, grade, posições das fichas e névoa. Coluna separada
     # dos combatentes para mover uma ficha não brigar com o rastreador.
     board = db.Column(JSONField, nullable=True)
+    # Combate preparado para uma sessão (roteiro do mestre).
+    session_id = db.Column(db.Integer, db.ForeignKey("game_sessions.id", ondelete="SET NULL"),
+                           nullable=True)
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     campaign = db.relationship("Campaign", back_populates="encounters")
+    session = db.relationship("GameSession")
 
 
 class TimelineEntry(db.Model):
@@ -557,3 +576,82 @@ class LoginAttempt(db.Model):
     ip = db.Column(db.String(64), nullable=False, index=True)
     success = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class RandomTable(db.Model):
+    """Tabela aleatória do mestre: "Encontros na estrada", "Nomes de taverna"."""
+
+    __tablename__ = "random_tables"
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    # [{"min": 1, "max": 3, "text": "Lobos"}] — faixas do dado (ver app/tables.py)
+    entries = db.Column(JSONField, default=list)
+    visibility = db.Column(db.String(12), default="mestre")  # mesa | mestre
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    campaign = db.relationship("Campaign", backref=db.backref(
+        "random_tables", lazy="dynamic", cascade="all, delete-orphan"))
+
+
+class Whisper(db.Model):
+    """Sussurro: mensagem entre um jogador e o mestre que a mesa não vê."""
+
+    __tablename__ = "whispers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    text = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    sender = db.relationship("User", foreign_keys=[sender_id])
+    recipient = db.relationship("User", foreign_keys=[recipient_id])
+
+    def as_dict(self):
+        return {"id": self.id, "from": self.sender.username, "from_id": self.sender_id,
+                "to": self.recipient.username, "to_id": self.recipient_id, "text": self.text,
+                "at_iso": self.created_at.isoformat() + "Z"}
+
+
+class ErrorReport(db.Model):
+    """Erro 500 registrado para o administrador ver (sem depender de e-mail)."""
+
+    __tablename__ = "error_reports"
+
+    id = db.Column(db.Integer, primary_key=True)
+    signature = db.Column(db.String(40), unique=True, nullable=False)  # agrupa o mesmo erro
+    path = db.Column(db.String(300), default="")
+    method = db.Column(db.String(10), default="")
+    user_id = db.Column(db.Integer, nullable=True)
+    summary = db.Column(db.String(300), default="")
+    traceback = db.Column(db.Text, default="")
+    count = db.Column(db.Integer, default=1)
+    first_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class SiteSetting(db.Model):
+    """Pares chave/valor do site (ex.: quando o último backup foi baixado)."""
+
+    __tablename__ = "site_settings"
+
+    key = db.Column(db.String(60), primary_key=True)
+    value = db.Column(db.Text, default="")
+
+    @staticmethod
+    def get(key, default=None):
+        row = db.session.get(SiteSetting, key)
+        return row.value if row is not None else default
+
+    @staticmethod
+    def put(key, value):
+        row = db.session.get(SiteSetting, key)
+        if row is None:
+            db.session.add(SiteSetting(key=key, value=str(value)))
+        else:
+            row.value = str(value)

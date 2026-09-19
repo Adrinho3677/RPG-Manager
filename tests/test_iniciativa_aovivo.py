@@ -49,7 +49,7 @@ def test_iniciativa_rola_pela_regra_do_sistema(mesa, app):
     assert "Iniciativa rolada" in state["messages"][0]
 
     with app.app_context():
-        logs = RollLog.query.filter_by(label="Iniciativa").all()
+        logs = RollLog.query.filter(RollLog.label.like("Iniciativa%")).all()
         publico = [l for l in logs if not l.secret]
         secreto = [l for l in logs if l.secret]
         assert len(publico) == 1 and "Kian" in publico[0].detail

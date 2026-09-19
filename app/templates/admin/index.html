@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Administração · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Administração do site</h1>
+    <p class="subtitle">Só administradores veem esta página
+      {%- if admin_names %} ({{ admin_names|join(', ') }}){% else %} (sem ADMIN_USERNAMES: a primeira conta criada){% endif %}.</p>
+  </div>
+</div>
+
+<div class="split">
+  <div>
+    <div class="card" id="erros">
+      <div class="card-head">
+        <h2>⚠️ Erros recentes</h2>
+        {% if errors %}
+          <form method="post" action="{{ url_for('admin.errors_clear') }}" data-confirm="Limpar a lista de erros?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-ghost btn-sm" type="submit">Limpar lista</button>
+          </form>
+        {% endif %}
+      </div>
+      {% if errors %}
+        <div class="list">
+          {% for report in errors %}
+            <a class="list-item" href="{{ url_for('admin.error_detail', report_id=report.id) }}">
+              <span>
+                <strong>{{ report.summary }}</strong>
+                <span class="meta">{{ report.method }} {{ report.path }} · última vez {{ report.last_at|hora }}</span>
+              </span>
+              <span class="tag {{ 'tag-danger' if report.count > 1 }}">{{ report.count }}×</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Nenhum erro registrado. 🎉</p>
+      {% endif %}
+      <p class="hint">Todo erro 500 fica aqui, agrupado. Sem e-mail configurado, é por aqui que você
+        descobre o que quebrou — o Error log da aba Web do PythonAnywhere também mostra.</p>
+    </div>
+
+    <div class="card" id="usuarios">
+      <div class="card-head"><h2>👥 Usuários</h2><span class="tag">{{ users|length }}</span></div>
+      <div class="table-wrap">
+        <table class="admin-users">
+          <thead><tr><th>Usuário</th><th>Mestre de</th><th>Mesas</th><th>Fichas</th><th>Desde</th><th></th></tr></thead>
+          <tbody>
+            {% for user in users %}
+              <tr>
+                <td><strong>{{ user.username }}</strong><br><span class="muted small">{{ user.email }}</span></td>
+                <td>{{ counts.campaigns.get(user.id, 0) }}</td>
+                <td>{{ counts.memberships.get(user.id, 0) }}</td>
+                <td>{{ counts.characters.get(user.id, 0) }}</td>
+                <td class="small">{{ user.created_at|hora('%d/%m/%Y') }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('admin.user_password', user_id=user.id) }}"
+                        data-confirm="Gerar uma senha temporária para {{ user.username }}? A atual deixa de valer e os aparelhos conectados saem.">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-ghost btn-sm" type="submit">Senha temporária</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="card {{ 'card-highlight' if days is none or days >= 7 }}" id="backup">
+      <h3>💾 Backup fora do servidor</h3>
+      <p class="muted small">O backup diário fica no mesmo servidor do site. Baixe uma cópia de vez em quando
+        para ter uma guardada com você.</p>
+      <p><strong>{% if days is none %}Nunca baixado.{% elif days == 0 %}Baixado hoje.{% else %}Último download: há {{ days }} dia(s).{% endif %}</strong></p>
+      <a class="btn btn-gold btn-block" href="{{ url_for('admin.backup') }}">Baixar backup (banco + imagens)</a>
+      <a class="btn btn-ghost btn-block btn-sm" style="margin-top:.4rem" href="{{ url_for('admin.backup', imagens=0) }}">Só o banco (menor)</a>
+    </div>
+
+    <div class="card" id="arquivos">
+      <h3>🧹 Espaço em disco</h3>
+      <table class="admin-usage">
+        <tr><td>Banco</td><td>{{ usage.database }}</td></tr>
+        <tr><td>Imagens</td><td>{{ usage.uploads }}</td></tr>
+        <tr><td>Backups no servidor</td><td>{{ usage.backups }}</td></tr>
+      </table>
+      <p class="small">Sobrando para limpar: <strong>{{ preview.files }} arquivo(s), {{ preview_size }}</strong>
+        <span class="muted">(retratos que nenhuma ficha usa, uploads sem registro, cópias velhas da névoa).</span></p>
+      <form method="post" action="{{ url_for('admin.cleanup') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-block btn-sm" type="submit" {% if not preview.files %}disabled{% endif %}>Limpar agora</button>
+      </form>
+      <p class="hint">A tarefa diária <code>flask manutencao</code> também limpa sozinha.</p>
+    </div>
+  </aside>
+</div>
+{% endblock %}

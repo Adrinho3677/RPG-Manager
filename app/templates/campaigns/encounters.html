@@ -4,6 +4,9 @@
 {% include "campaigns/_nav.html" %}
 
 {% if is_master %}
+  <p class="tv-link"><a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.tv', campaign_id=campaign.id) }}"
+     target="_blank" rel="noopener">📺 Abrir a tela da TV</a>
+    <span class="muted small">— mapa, iniciativa, relógios e handouts, do jeito que os jogadores veem.</span></p>
   <div class="card">
     <div class="card-head"><h2>Novo combate</h2></div>
     <form method="post" action="{{ url_for('campaigns.encounter_create', campaign_id=campaign.id) }}" class="field-row">
@@ -30,7 +33,9 @@
        data-poll-url="{{ url_for('campaigns.encounter_poll', campaign_id=campaign.id, encounter_id=encounter.id) }}"
        data-editable="{{ 1 if is_master else 0 }}">
     <div class="card-head">
-      <h2>{{ encounter.name }}</h2>
+      <h2>{{ encounter.name }}
+        {% if encounter.session and is_master %}<a class="tag tag-accent" style="font-size:.7rem"
+           href="{{ url_for('campaigns.session_detail', campaign_id=campaign.id, session_id=encounter.session.id) }}">preparado para a sessão {{ encounter.session.number }}</a>{% endif %}</h2>
       <span class="actions">
         <span class="tag tag-gold">Rodada <strong data-round>{{ encounter.round_number }}</strong></span>
         <span class="turn-name" data-turn-name></span>
@@ -92,6 +97,7 @@
              data-state-url="{{ url_for('campaigns.board_state', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-move-url="{{ url_for('campaigns.board_move', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-area-url="{{ url_for('campaigns.board_area', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-undo-url="{{ url_for('campaigns.board_undo', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              {% if is_master %}
              data-config-url="{{ url_for('campaigns.board_configure', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-hide-url="{{ url_for('campaigns.board_hide', campaign_id=campaign.id, encounter_id=encounter.id) }}"
@@ -105,6 +111,8 @@
           <button class="btn btn-ghost btn-sm btn-icon" type="button" data-board-action="zoom-out" title="Diminuir">−</button>
           <button class="btn btn-ghost btn-sm btn-icon" type="button" data-board-action="zoom-in" title="Aumentar">+</button>
           <button class="btn btn-ghost btn-sm" type="button" data-board-action="full">⛶ Tela cheia</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-board-action="undo"
+                  title="Desfaz seu último movimento (Ctrl+Z)">↶ Desfazer</button>
           <span class="board-tool-group" title="Área de efeito: escolha a forma e clique (e arraste para mirar) no mapa">
             <span class="muted small">Área</span>
             <button class="btn btn-ghost btn-sm" type="button" data-area-shape="circle" title="Círculo (raio)">◯</button>
@@ -183,6 +191,7 @@
         <div class="board-surface" data-board-surface>
           <img class="board-image" data-board-image alt="" hidden draggable="false">
           <div class="board-grid"></div>
+          <canvas class="board-reach" data-board-reach></canvas>
           <canvas class="board-fog" data-board-fog></canvas>
           <div class="board-markers" data-board-markers></div>
           <svg class="board-areas" data-board-areas aria-hidden="true"></svg>
@@ -190,7 +199,8 @@
         </div>
       </div>
       <div class="board-area-list" data-board-area-list hidden></div>
-      <p class="hint">Arraste uma ficha, ou toque nela e depois no quadrado de destino.
+      <p class="hint">Arraste uma ficha, ou toque nela e depois no quadrado de destino (no teclado:
+        selecione e use as setas). A área verde é até onde ela anda, pelo deslocamento da ficha.
         {% if is_master %}Fichas do rastreador que ainda não estão no mapa aparecem acima dele.{% endif %}</p>
       <script type="application/json" data-board-payload>{{ board|tojson }}</script>
     </details>
@@ -206,12 +216,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script id="dice-config" type="application/json">
-  {{ {'free_url': url_for('campaigns.roll_free', campaign_id=campaign.id),
-      'feed_url': url_for('campaigns.roll_feed', campaign_id=campaign.id),
-      'is_master': is_master}|tojson }}
-</script>
-<script src="{{ url_for('static', filename='js/dice.js') }}"></script>
+{% include "campaigns/_dice.html" %}
 <script src="{{ url_for('static', filename='js/encounter.js') }}"></script>
 <script src="{{ url_for('static', filename='js/board.js') }}"></script>
 <script src="{{ url_for('static', filename='js/clocks.js') }}"></script>

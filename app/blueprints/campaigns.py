@@ -87,7 +87,8 @@ def visible_notes(campaign, user, is_master):
     """Anotações que este usuário pode ler. Usado em toda listagem de notas."""
     query = campaign.notes
     if is_master:
-        return query
+        # O mestre vê tudo, menos o diário privado dos jogadores.
+        return query.filter(or_(Note.visibility != "privada", Note.author_id == user.id))
     return query.filter(
         or_(
             Note.visibility == "mesa",
@@ -466,7 +467,24 @@ def session_detail(campaign_id, session_id):
         attendance_statuses=SessionAttendance.STATUSES,
         roster=roster,
         my_answer=answers.get(current_user.id),
+        prepared=(Encounter.query.filter_by(session_id=item.id).order_by(Encounter.created_at).all()
+                  if is_master else []),
     )
+
+
+@bp.route("/<int:campaign_id>/sessoes/<int:session_id>/combate", methods=["POST"])
+@login_required
+def session_encounter(campaign_id, session_id):
+    """Prepara um combate para esta sessão: fica pronto no rastreador, ligado ao roteiro."""
+    campaign = get_campaign(campaign_id, master_only=True)
+    item = GameSession.query.filter_by(id=session_id, campaign_id=campaign.id).first_or_404()
+    encounter = Encounter(campaign_id=campaign.id, session_id=item.id, combatants=[],
+                          name=(request.form.get("name") or "").strip()[:160] or "Combate da sessão %d" % item.number)
+    db.session.add(encounter)
+    db.session.commit()
+    flash("Combate “%s” preparado. Adicione as criaturas e o mapa agora; na sessão é só abrir."
+          % encounter.name, "success")
+    return redirect(url_for("campaigns.encounters", campaign_id=campaign.id) + "#e%d" % encounter.id)
 
 
 @bp.route("/<int:campaign_id>/sessoes/<int:session_id>/presenca", methods=["POST"])
@@ -483,10 +501,39 @@ def session_attendance(campaign_id, session_id):
             answer = SessionAttendance(session_id=item.id, user_id=current_user.id)
             db.session.add(answer)
         answer.status = status
-        answer.comment = (request.form.get("comment") or "").strip()[:200]
+        if "comment" in request.form:
+            answer.comment = (request.form.get("comment") or "").strip()[:200]
         db.session.commit()
         flash("Presença registrada: %s." % answer.label, "success")
-    return redirect(url_for("campaigns.session_detail", campaign_id=campaign.id, session_id=item.id))
+    return redirect(security.safe_next(
+        request.form.get("next"),
+        url_for("campaigns.session_detail", campaign_id=campaign.id, session_id=item.id)))
+
+
+@bp.route("/presenca/<token>", methods=["GET", "POST"])
+def attendance_link(token):
+    """Link do e-mail de lembrete: confirma a presença sem precisar entrar.
+
+    Abrir o link só mostra a pergunta (programas que "visitam" links de e-mail
+    não respondem por ninguém); a resposta vale ao clicar no botão.
+    """
+    from app import reminders
+    item, user = reminders.from_token(token)
+    if item is None:
+        flash("Este link de presença não vale mais. Responda pelo site.", "error")
+        return redirect(url_for("auth.login"))
+    campaign = db.session.get(Campaign, item.campaign_id)
+    if request.method == "POST":
+        status = request.form.get("status")
+        if status in dict(SessionAttendance.STATUSES):
+            record = reminders.answer(item, user, status)
+            db.session.commit()
+            return render_template("campaigns/attendance_link.html", item=item, campaign=campaign,
+                                   user=user, done=record.label, chosen=status,
+                                   statuses=SessionAttendance.STATUSES, when=reminders.when_label(item))
+    return render_template("campaigns/attendance_link.html", item=item, campaign=campaign, user=user,
+                           done=None, chosen=request.args.get("resposta"),
+                           statuses=SessionAttendance.STATUSES, when=reminders.when_label(item))
 
 
 @bp.route("/<int:campaign_id>/sessoes/<int:session_id>/cena", methods=["POST"])
@@ -552,6 +599,8 @@ def session_xp(campaign_id, session_id):
 def session_delete(campaign_id, session_id):
     campaign = get_campaign(campaign_id, master_only=True)
     item = GameSession.query.filter_by(id=session_id, campaign_id=campaign.id).first_or_404()
+    # Combates preparados para ela continuam existindo, só perdem o vínculo.
+    Encounter.query.filter_by(session_id=item.id).update({"session_id": None})
     db.session.delete(item)
     db.session.commit()
     flash("Sessão removida.", "success")
@@ -636,6 +685,8 @@ def note_form(campaign_id, note_id=None):
             previous = note.visibility
             if is_master and visibility in ("mestre", "jogadores"):
                 note.visibility = visibility
+            elif visibility == "privada" and note.author_id == current_user.id:
+                note.visibility = "privada"
             else:
                 note.visibility = "mesa"
             if note.visibility == "jogadores":
@@ -671,6 +722,8 @@ def note_reveal(campaign_id, note_id):
     """Mostra uma anotação secreta para a mesa toda ou para jogadores escolhidos."""
     campaign = get_campaign(campaign_id, master_only=True)
     note = Note.query.filter_by(id=note_id, campaign_id=campaign.id).first_or_404()
+    if not note.visible_to(current_user, True):
+        abort(404)  # diário de um jogador: o mestre nem sabe que existe
 
     target = request.form.get("target", "mesa")
     if target == "mestre":
@@ -703,6 +756,8 @@ def note_reveal(campaign_id, note_id):
 def note_pin(campaign_id, note_id):
     campaign = get_campaign(campaign_id)
     note = Note.query.filter_by(id=note_id, campaign_id=campaign.id).first_or_404()
+    if not note.visible_to(current_user, campaign.is_master(current_user)):
+        abort(404)
     if note.author_id != current_user.id and not campaign.is_master(current_user):
         abort(403)
     note.pinned = not note.pinned
@@ -715,6 +770,8 @@ def note_pin(campaign_id, note_id):
 def note_delete(campaign_id, note_id):
     campaign = get_campaign(campaign_id)
     note = Note.query.filter_by(id=note_id, campaign_id=campaign.id).first_or_404()
+    if not note.visible_to(current_user, campaign.is_master(current_user)):
+        abort(404)
     if note.author_id != current_user.id and not campaign.is_master(current_user):
         abort(403)
     db.session.delete(note)
@@ -736,10 +793,50 @@ def cast(campaign_id):
         "campaigns/cast.html",
         campaign=campaign,
         is_master=is_master,
+        library=bestiary_library(campaign) if is_master else [],
         cast=query.order_by(Character.kind.desc(), Character.name).all(),
         encounters=(campaign.encounters.filter_by(active=True)
                     .order_by(Encounter.created_at.desc()).all() if is_master else []),
     )
+
+
+def bestiary_library(campaign):
+    """NPCs e criaturas das OUTRAS campanhas em que sou mestre, com o mesmo sistema."""
+    others = Campaign.query.filter(Campaign.master_id == current_user.id,
+                                   Campaign.id != campaign.id,
+                                   Campaign.system_id == campaign.system_id).order_by(Campaign.name).all()
+    library = []
+    for other in others:
+        found = other.characters.filter(Character.kind != "pj").order_by(Character.kind.desc(),
+                                                                         Character.name).all()
+        if found:
+            library.append((other, found))
+    return library
+
+
+@bp.route("/<int:campaign_id>/elenco/copiar", methods=["POST"])
+@login_required
+def cast_copy(campaign_id):
+    """Traz uma cópia de um NPC/criatura de outra campanha minha (bestiário reaproveitado)."""
+    campaign = get_campaign(campaign_id, master_only=True)
+    source = db.get_or_404(Character, to_int(request.form.get("character_id"), 0))
+    origin = source.campaign
+    if (origin is None or origin.master_id != current_user.id or source.kind == "pj"
+            or origin.id == campaign.id):
+        abort(404)
+    if source.system_id != campaign.system_id:
+        flash("“%s” é de outro sistema (%s): a ficha não encaixaria aqui."
+              % (source.name, source.system.name), "error")
+        return redirect(url_for("campaigns.cast", campaign_id=campaign.id))
+    copy_ = Character(name=source.name, kind=source.kind, concept=source.concept,
+                      avatar_url=source.avatar_url, owner_id=current_user.id, campaign_id=campaign.id,
+                      system_id=campaign.system_id, visible_to_players=source.visible_to_players,
+                      data=copy.deepcopy(source.data or {}))
+    db.session.add(copy_)
+    db.session.commit()
+    flash("“%s” copiado de %s. É uma cópia: mudar aqui não mexe na original."
+          % (copy_.name, origin.name), "success")
+    return redirect(url_for("campaigns.cast", campaign_id=campaign.id))
 
 
 # --------------------------------------------------------------- combate
@@ -963,6 +1060,8 @@ def encounter_save(campaign_id, encounter_id):
             "kind": item.get("kind") if item.get("kind") in ("pj", "npc", "criatura") else "criatura",
             "character_id": character_id,
             "source_id": to_int(item.get("source_id"), 0) or None,
+            # Atrasou o turno ("aguardando"): a vez passa por ele até agir.
+            "delayed": bool(item.get("delayed")),
             "_hp_loaded": item.get("hp_loaded"),
         })
 
@@ -1028,6 +1127,25 @@ def encounter_save(campaign_id, encounter_id):
     return jsonify(encounter_state(encounter, True, messages))
 
 
+@bp.route("/<int:campaign_id>/tv")
+@login_required
+def tv(campaign_id):
+    """Tela para a TV da mesa: mapa, iniciativa, relógios, rolagens e handouts —
+    exatamente o que os jogadores veem, mesmo que quem esteja logado seja o mestre."""
+    campaign = get_campaign(campaign_id)
+    chosen = to_int(request.args.get("combate"), 0)
+    encounters = campaign.encounters.order_by(Encounter.created_at.desc()).all()
+    encounter = next((e for e in encounters if e.id == chosen), encounters[0] if encounters else None)
+    return render_template(
+        "campaigns/tv.html", campaign=campaign, encounter=encounter, encounters=encounters,
+        is_master=False, live_campaign=campaign,
+        board=board_payload(campaign, encounter, public=True) if encounter else None,
+        state=encounter_state(encounter, False) if encounter else None,
+        world=worldcal.format_date(worldcal.normalize(campaign.calendar),
+                                   (campaign.calendar or {}).get("today"), True) if campaign.calendar else "",
+    )
+
+
 @bp.route("/<int:campaign_id>/combate/<int:encounter_id>/iniciativa", methods=["POST"])
 @login_required
 def encounter_initiative(campaign_id, encounter_id):
@@ -1079,10 +1197,12 @@ def encounter_initiative(campaign_id, encounter_id):
 
     for lines, is_secret in ((public, False), (secret, True)):
         if lines:
+            # O resultado vai no rótulo ("Iniciativa: Kian 17 · Lia 9"): um número
+            # solto no lugar do resultado pareceria um dado que tirou 1.
             db.session.add(RollLog(
-                campaign_id=campaign.id, user_id=current_user.id, label="Iniciativa",
-                result=str(len(lines)), detail=" · ".join(lines)[:400], flag="",
-                secret=is_secret))
+                campaign_id=campaign.id, user_id=current_user.id,
+                label=("Iniciativa: " + " · ".join(lines))[:120],
+                result="✓", detail=" · ".join(lines)[:400], flag="", secret=is_secret))
     db.session.commit()
     messages = ["Iniciativa rolada: " + ", ".join(public + secret) + "."]
     if manual:
@@ -1107,10 +1227,12 @@ def campaign_maps(campaign):
             .order_by(Asset.created_at).all()}
 
 
-def board_payload(campaign, encounter):
-    is_master = campaign.is_master(current_user)
+def board_payload(campaign, encounter, public=False):
+    """public=True: o que a mesa vê (tela da TV), mesmo com o mestre logado."""
+    is_master = campaign.is_master(current_user) and not public
     state = encounter_state(encounter, is_master)
-    return board_helper.view(encounter, state, current_user, is_master, campaign_maps(campaign))
+    return board_helper.view(encounter, state, None if public else current_user, is_master,
+                             campaign_maps(campaign))
 
 
 def board_change(campaign, encounter, change):
@@ -1156,7 +1278,8 @@ def board_move(campaign_id, encounter_id):
             return jsonify({"ok": False, "message": "O mestre travou o mapa."}), 403
 
     x, y = payload.get("x"), payload.get("y")
-    return board_change(campaign, encounter, lambda b: board_helper.move(b, uid, x, y))
+    return board_change(campaign, encounter,
+                        lambda b: board_helper.move(b, uid, x, y, by=current_user.id))
 
 
 @bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/configurar", methods=["POST"])
@@ -1177,8 +1300,33 @@ def board_hide(campaign_id, encounter_id):
     encounter = get_encounter(campaign, encounter_id)
     payload = request.get_json(silent=True) or {}
     uid = str(payload.get("uid") or "")[:16]
-    return board_change(campaign, encounter,
-                        lambda b: board_helper.set_hidden(b, uid, payload.get("hidden")))
+
+    def change(board):
+        if "size" in payload:
+            board = board_helper.set_size(board, uid, payload.get("size"))
+        if "hidden" in payload:
+            board = board_helper.set_hidden(board, uid, payload.get("hidden"))
+        return board
+    return board_change(campaign, encounter, change)
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/desfazer", methods=["POST"])
+@login_required
+def board_undo(campaign_id, encounter_id):
+    """Desfaz o último movimento: o jogador, só os dele; o mestre, o de qualquer um."""
+    campaign = get_campaign(campaign_id)
+    encounter = get_encounter(campaign, encounter_id)
+    is_master = campaign.is_master(current_user)
+    mine = set()
+    if not is_master:
+        board = board_helper.normalize(encounter.board)
+        if not board["players_move"]:
+            return jsonify({"ok": False, "message": "O mestre travou o mapa."}), 403
+        owned = {ch.id for ch in campaign.characters.filter_by(owner_id=current_user.id)}
+        mine = {c["uid"] for c in encounter.combatants or []
+                if c.get("character_id") in owned and not board["tokens"].get(c["uid"], {}).get("hidden")}
+    return board_change(campaign, encounter, lambda b: board_helper.undo(
+        b, current_user.id, is_master, lambda uid: is_master or uid in mine))
 
 
 @bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/area", methods=["POST"])
@@ -1254,9 +1402,11 @@ def roll_feed(campaign_id):
     return jsonify(dict(ok=True, **recent_rolls(campaign, campaign.is_master(current_user), since)))
 
 
-def recent_rolls(campaign, is_master, since):
+def recent_rolls(campaign, is_master, since, public_only=False):
     query = campaign.rolls
-    if not is_master:
+    if public_only:  # tela da TV: só o que a mesa toda pode ver
+        query = query.filter(RollLog.secret.is_(False))
+    elif not is_master:
         query = query.filter(or_(RollLog.secret.is_(False), RollLog.user_id == current_user.id))
     if since:
         rolls = query.filter(RollLog.id > since).order_by(RollLog.id.asc()).limit(50).all()
@@ -1272,7 +1422,7 @@ def roll_free(campaign_id):
     campaign = get_campaign(campaign_id)
     payload = request.get_json(silent=True) or {}
     try:
-        outcome = dice.roll_formula(str(payload.get("formula") or "")[:40])
+        outcome = dice.roll_formula(str(payload.get("formula") or "")[:80])
     except dice.DiceError as error:
         return jsonify({"ok": False, "message": str(error)}), 400
     log = RollLog(
@@ -1282,7 +1432,8 @@ def roll_free(campaign_id):
         result=str(outcome["result"]),
         detail=outcome["detail"][:400],
         flag=outcome["flag"],
-        secret=bool(payload.get("secret")) and campaign.is_master(current_user),
+        # Secreta: só quem rolou e o mestre veem (o jogador rolando escondido da mesa).
+        secret=bool(payload.get("secret")),
     )
     db.session.add(log)
     db.session.commit()

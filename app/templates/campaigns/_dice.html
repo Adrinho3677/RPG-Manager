@@ -1,0 +1,8 @@
+{# Painel de rolagens + sussurros de uma página de campanha (ver static/js/dice.js). #}
+<script id="dice-config" type="application/json">
+  {{ {'free_url': url_for('campaigns.roll_free', campaign_id=campaign.id),
+      'feed_url': url_for('campaigns.roll_feed', campaign_id=campaign.id),
+      'whisper_url': url_for('table.whisper', campaign_id=campaign.id),
+      'is_master': is_master}|tojson }}
+</script>
+<script src="{{ url_for('static', filename='js/dice.js') }}"></script>

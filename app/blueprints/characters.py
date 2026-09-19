@@ -8,6 +8,7 @@ from flask import (Blueprint, abort, flash, jsonify, redirect, render_template,
 from flask_login import current_user, login_required
 
 from app import dice
+from app import formula as formula_helper
 from app import sheet as sheet_helper
 from app.blueprints.uploads import UploadError, asset_from_url, remove_file, save_upload
 from app.extensions import db
@@ -163,6 +164,8 @@ def detail(character_id):
                 "labels": data["labels"],
                 "state_url": url_for("characters.state", character_id=character.id),
                 "roll_url": url_for("characters.roll", character_id=character.id),
+                "whisper_url": (url_for("table.whisper", campaign_id=campaign.id)
+                                if campaign else None),
                 "feed_url": (url_for("campaigns.roll_feed", campaign_id=campaign.id)
                              if campaign else None),
                 "is_master": bool(campaign and campaign.is_master(current_user)),
@@ -245,7 +248,11 @@ def roll(character_id):
 
     try:
         if payload.get("formula"):
-            outcome = dice.roll_formula(str(payload.get("formula"))[:40])
+            # Na ficha, a fórmula enxerga os atributos: "1d20+FOR", "1d8+DES+2".
+            data, _ = sheet_helper.apply_formulas(character.system, character.data)
+            variables = formula_helper.character_variables(
+                sheet_helper.attribute_entries(character.system, data), data.get("meta"))
+            outcome = dice.roll_formula(str(payload.get("formula"))[:80], variables)
             label = (payload.get("label") or payload.get("formula")).strip()[:120]
         else:
             target = payload.get("target")
@@ -255,6 +262,7 @@ def roll(character_id):
                 bonus=to_int(payload.get("bonus"), 0),
                 target=to_int(target, 0) if target is not None else None,
                 success_on=to_int(sysroll.get("success_on"), 6),
+                mode=str(payload.get("mode") or ""),
             )
     except dice.DiceError as error:
         return jsonify({"ok": False, "message": str(error)}), 400

@@ -26,11 +26,12 @@ def enabled():
     return bool(current_app.testing or config.get("MAIL_SERVER"))
 
 
-def send(to, subject, body):
-    """Envia texto puro. Devolve True se saiu (ou foi para a caixa de teste)."""
+def send(to, subject, body, attachments=None):
+    """Envia texto puro (e anexos [(nome, tipo, bytes)]). True se saiu (ou foi para a caixa de teste)."""
     app = current_app
     if app.testing:
-        app.extensions.setdefault("outbox", []).append({"to": to, "subject": subject, "body": body})
+        app.extensions.setdefault("outbox", []).append({"to": to, "subject": subject, "body": body,
+                                                        "attachments": attachments or []})
         return True
     config = app.config
     if not config.get("MAIL_SERVER"):
@@ -42,6 +43,9 @@ def send(to, subject, body):
     message["To"] = to
     message["Subject"] = subject
     message.set_content(body)
+    for name, mimetype, data in attachments or []:
+        maintype, _, subtype = mimetype.partition("/")
+        message.add_attachment(data, maintype=maintype, subtype=subtype or "octet-stream", filename=name)
 
     port = int(config.get("MAIL_PORT") or 587)
     context = ssl.create_default_context()

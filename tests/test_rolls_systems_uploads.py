@@ -31,10 +31,14 @@ def test_rolagem_secreta_so_para_o_mestre(mesa):
     mestre.post("/campanhas/%d/rolar" % camp, json={"formula": "1d6", "label": "Aberta"})
     ana_feed = [r["label"] for r in mesa.user("ana").get("/campanhas/%d/rolagens" % camp).get_json()["rolls"]]
     assert ana_feed == ["Aberta"]
-    # jogador não consegue marcar a própria rolagem como secreta
+    # Jogador rolando "só o mestre vê": ele e o mestre veem; os outros jogadores não.
+    mesa.join("bia", code)
     mesa.user("ana").post("/campanhas/%d/rolar" % camp, json={"formula": "1d4", "secret": True})
     with mesa.app.app_context():
-        assert RollLog.query.filter_by(label="1d4").one().secret is False
+        assert RollLog.query.filter_by(label="1d4").one().secret is True
+    feed = lambda who: [r["label"] for r in mesa.user(who).get("/campanhas/%d/rolagens" % camp).get_json()["rolls"]]
+    assert "1d4" in feed("ana") and "1d4" in feed("mestre")
+    assert "1d4" not in feed("bia")
 
 
 def test_parada_de_vampiro_nao_dobra(mesa):

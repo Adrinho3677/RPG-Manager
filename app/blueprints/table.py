@@ -144,6 +144,8 @@ def spotlight(campaign_id):
         back = url_for("uploads.gallery", campaign_id=campaign.id)
     elif kind == "anotacao":
         item = Note.query.filter_by(id=item_id, campaign_id=campaign.id).first_or_404()
+        if not item.visible_to(current_user, True):
+            abort(404)  # diário de jogador não se mostra
         if item.visibility != "mesa":
             item.visibility = "mesa"
             item.recipients = []
@@ -160,6 +162,119 @@ def spotlight(campaign_id):
     db.session.commit()
     flash("“%s” apareceu na tela de toda a mesa." % title, "success")
     return redirect(security.safe_next(request.form.get("next"), back))
+
+
+# ========================================================== tabelas aleatórias
+def _visible_tables(campaign, is_master):
+    from app.models import RandomTable
+    query = campaign.random_tables.order_by(RandomTable.name)
+    if not is_master:
+        query = query.filter(RandomTable.visibility == "mesa")
+    return query.all()
+
+
+@bp.route("/<int:campaign_id>/tabelas", methods=["GET", "POST"])
+@login_required
+def random_tables(campaign_id):
+    from app import tables as tables_helper
+    from app.models import RandomTable
+    campaign = _campaign(campaign_id)
+    is_master = campaign.is_master(current_user)
+    editing = None
+    if request.args.get("editar"):
+        editing = RandomTable.query.filter_by(id=to_int(request.args.get("editar"), 0),
+                                              campaign_id=campaign.id).first()
+
+    if request.method == "POST":
+        if not is_master:
+            abort(403)
+        table_id = to_int(request.form.get("id"), 0)
+        item = (RandomTable.query.filter_by(id=table_id, campaign_id=campaign.id).first_or_404()
+                if table_id else RandomTable(campaign_id=campaign.id))
+        name = (request.form.get("name") or "").strip()[:120]
+        text = request.form.get("entries") or ""
+        try:
+            if not name:
+                raise tables_helper.TableError("Dê um nome à tabela.")
+            entries = tables_helper.parse(text)
+        except tables_helper.TableError as error:
+            flash(str(error), "error")
+            return render_template("campaigns/tables.html", campaign=campaign, is_master=True,
+                                   tables=_visible_tables(campaign, True), editing=item if table_id else None,
+                                   draft={"name": name, "entries": text,
+                                          "visibility": request.form.get("visibility")},
+                                   as_text=tables_helper.as_text, die_size=tables_helper.die_size), 400
+        item.name = name
+        item.entries = entries
+        item.visibility = "mesa" if request.form.get("visibility") == "mesa" else "mestre"
+        if not table_id:
+            db.session.add(item)
+        db.session.commit()
+        flash("Tabela “%s” salva (rola 1d%d)." % (name, tables_helper.die_size(entries)), "success")
+        return redirect(url_for("table.random_tables", campaign_id=campaign.id) + "#t%d" % item.id)
+
+    return render_template("campaigns/tables.html", campaign=campaign, is_master=is_master,
+                           tables=_visible_tables(campaign, is_master), editing=editing, draft=None,
+                           as_text=tables_helper.as_text, die_size=tables_helper.die_size)
+
+
+@bp.route("/<int:campaign_id>/tabelas/<int:table_id>/excluir", methods=["POST"])
+@login_required
+def random_table_delete(campaign_id, table_id):
+    from app.models import RandomTable
+    campaign = _campaign(campaign_id, master_only=True)
+    item = RandomTable.query.filter_by(id=table_id, campaign_id=campaign.id).first_or_404()
+    db.session.delete(item)
+    db.session.commit()
+    flash("Tabela removida.", "success")
+    return redirect(url_for("table.random_tables", campaign_id=campaign.id))
+
+
+@bp.route("/<int:campaign_id>/tabelas/<int:table_id>/rolar", methods=["POST"])
+@login_required
+def random_table_roll(campaign_id, table_id):
+    """Rola na tabela; o resultado vai para o registro da mesa (ou só para o mestre)."""
+    from app import tables as tables_helper
+    from app.models import RandomTable, RollLog
+    campaign = _campaign(campaign_id)
+    is_master = campaign.is_master(current_user)
+    item = RandomTable.query.filter_by(id=table_id, campaign_id=campaign.id).first_or_404()
+    if item.visibility != "mesa" and not is_master:
+        abort(404)
+    payload = request.get_json(silent=True) or {}
+    value, sides, text = tables_helper.roll(item.entries)
+    log = RollLog(campaign_id=campaign.id, user_id=current_user.id,
+                  label=("📜 " + item.name)[:120], result=str(value),
+                  detail=("1d%d → %s" % (sides, text))[:400], flag="",
+                  # Tabela só do mestre rola sempre em segredo.
+                  secret=item.visibility != "mesa" or bool(payload.get("secret")))
+    db.session.add(log)
+    db.session.commit()
+    return jsonify({"ok": True, "roll": log.as_dict(), "text": text, "value": value})
+
+
+# ================================================================== sussurros
+@bp.route("/<int:campaign_id>/sussurro", methods=["POST"])
+@login_required
+def whisper(campaign_id):
+    """Jogador fala só com o mestre; o mestre responde a um jogador."""
+    from app.models import CampaignMember, Whisper
+    campaign = _campaign(campaign_id)
+    payload = request.get_json(silent=True) or {}
+    text = str(payload.get("text") or "").strip()[:500]
+    if not text:
+        return jsonify({"ok": False, "message": "Escreva alguma coisa."}), 400
+    if campaign.is_master(current_user):
+        target = to_int(payload.get("to"), 0)
+        member = CampaignMember.query.filter_by(campaign_id=campaign.id, user_id=target).first()
+        if member is None or target == campaign.master_id:
+            return jsonify({"ok": False, "message": "Escolha um jogador da mesa."}), 400
+    else:
+        target = campaign.master_id
+    item = Whisper(campaign_id=campaign.id, sender_id=current_user.id, recipient_id=target, text=text)
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({"ok": True, "whisper": item.as_dict()})
 
 
 # =============================================================== tesouro do grupo

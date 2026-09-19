@@ -25,8 +25,17 @@
       </div>
       <button class="btn btn-primary btn-block" type="submit">Trocar senha</button>
     </form>
-    <p class="hint" style="margin-top:1rem">Esqueceu a senha? O administrador do site pode gerar
-      uma temporária pelo comando <code>flask redefinir-senha</code>.</p>
+    <p class="hint" style="margin-top:.6rem">Trocar a senha desconecta os outros aparelhos.</p>
+  </div>
+  <div class="card">
+    <h3>Aparelhos conectados</h3>
+    <p class="muted small">Entrou num computador que não é seu, ou perdeu o celular? Isto desconecta
+      todos os aparelhos — inclusive os que marcaram “continuar conectado” — e este também.</p>
+    <form method="post" action="{{ url_for('auth.logout_everywhere') }}"
+          data-confirm="Sair de todos os aparelhos, inclusive deste?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-danger btn-block" type="submit">Sair de todos os aparelhos</button>
+    </form>
   </div>
 </div>
 {% endblock %}
