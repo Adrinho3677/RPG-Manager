@@ -693,8 +693,13 @@
       Promise.resolve(flush()).then(function () {
         if (stale) return;
         submitting = true;
-        if (form.requestSubmit) form.requestSubmit(submitter || undefined);
-        else form.submit();
+        // setTimeout: sem nada pendente, o flush resolve na hora e este código
+        // rodaria ainda durante o evento de submit — e o navegador ignora um
+        // requestSubmit feito nesse momento (ficava "Salvando…" para sempre).
+        setTimeout(function () {
+          if (form.requestSubmit) form.requestSubmit(submitter || undefined);
+          else form.submit();
+        }, 0);
       });
     });
 
