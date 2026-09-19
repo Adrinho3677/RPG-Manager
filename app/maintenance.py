@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """Manutenção do site: erros, limpeza de arquivos e backup para baixar.
 
-Tudo pensado para o plano gratuito do PythonAnywhere, que não manda e-mail e só
-permite UMA tarefa agendada: o administrador vê os erros numa página, baixa o
-backup por um botão, e `flask manutencao` faz backup + lembretes + limpeza de
-uma vez. Se um dia houver e-mail configurado, os avisos também vão por lá.
+Tudo pensado para o plano gratuito do PythonAnywhere, que não manda e-mail nem
+tem tarefa agendada: o administrador vê os erros numa página, baixa o backup
+por um botão, e a manutenção diária (backup + lembretes + limpeza) roda sozinha
+no primeiro acesso de cada dia — ou à mão, com `flask manutencao` no Bash.
+Se um dia houver e-mail configurado, os avisos também vão por lá.
 """
 import hashlib
 import io
@@ -265,3 +266,92 @@ def email_backup(max_bytes=8 * 1024 * 1024):
     return _email_admins("Grimório: backup de %s" % datetime.now().strftime("%d/%m/%Y"),
                          "Segue o backup do banco do Grimório (sem as imagens).",
                          [(name, "application/zip", data)])
+
+
+# ------------------------------------------------- manutenção diária
+DAILY = timedelta(hours=24)
+LAST_RUN_KEY = "manutencao_em"
+
+
+def run_all(app):
+    """Backup + lembretes + limpeza (+ backup por e-mail às segundas). Devolve as linhas do relatório."""
+    import click
+    from app import reminders
+    from app.commands import make_backup
+    lines = []
+    try:
+        lines.append("Backup: %s" % os.path.basename(make_backup(app)))
+    except click.ClickException as error:
+        lines.append("Backup: %s" % error.message)
+    lines.append("Lembretes por e-mail enviados: %d" % reminders.send_due())
+    result = cleanup()
+    lines.append("Limpeza: %d arquivo(s), %.1f MB." % (result["files"], result["bytes"] / 1048576.0))
+    if datetime.now().weekday() == 0:
+        lines.append("Backup por e-mail: %d" % email_backup())
+    SiteSetting.put("manutencao_relatorio", " · ".join(lines))
+    db.session.commit()
+    return lines
+
+
+def last_run():
+    raw = SiteSetting.get(LAST_RUN_KEY)
+    try:
+        return datetime.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def claim_daily_run(now=None):
+    """Marca "rodando agora" se já passou um dia. True só para quem conseguiu marcar.
+
+    Duas requisições ao mesmo tempo não rodam a manutenção duas vezes: a marca
+    só é gravada se ainda for a que foi lida (compare-and-swap no banco).
+    """
+    from sqlalchemy import text
+    now = now or datetime.utcnow()
+    previous = SiteSetting.get(LAST_RUN_KEY)
+    if previous:
+        try:
+            if now - datetime.fromisoformat(previous) < DAILY:
+                return False
+        except ValueError:
+            pass
+        result = db.session.execute(
+            text("UPDATE site_settings SET value = :new WHERE key = :key AND value = :old"),
+            {"new": now.isoformat(), "key": LAST_RUN_KEY, "old": previous})
+        won = result.rowcount == 1
+    else:
+        try:
+            db.session.add(SiteSetting(key=LAST_RUN_KEY, value=now.isoformat()))
+            db.session.flush()
+            won = True
+        except Exception:
+            db.session.rollback()
+            return False
+    db.session.commit()
+    return won
+
+
+def register_daily(app):
+    """No plano gratuito não há tarefa agendada: o primeiro acesso de cada dia
+    dispara a manutenção, depois que a resposta já saiu (ninguém espera por ela)."""
+
+    @app.after_request
+    def daily_maintenance(response):
+        if not app.config.get("AUTO_MAINTENANCE") or request.path.startswith("/static/"):
+            return response
+        try:
+            due = claim_daily_run()
+        except Exception:
+            db.session.rollback()
+            return response
+        if due:
+            def run():
+                with app.app_context(), app.test_request_context(base_url=app.config.get("SITE_URL") or None):
+                    try:
+                        run_all(app)
+                    except Exception:
+                        db.session.rollback()
+                        app.logger.exception("Falha na manutenção diária")
+            response.call_on_close(run)
+        return response

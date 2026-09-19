@@ -461,3 +461,40 @@ def test_tela_da_tv_mostra_a_visao_da_mesa(mesa):
     # Sem ".mesa", o mestre continua vendo tudo.
     full = str(mestre.get("/campanhas/%d/ao-vivo?s=board:1:,rolls::" % camp).get_json())
     assert "Ogro 1" in full and "Secreta" in full
+
+
+# ------------------------------------------------- manutenção automática
+def test_manutencao_roda_sozinha_uma_vez_por_dia(mesa, app):
+    import os
+    from datetime import datetime
+    from app import maintenance
+    mesa.user("dono")
+    app.config["AUTO_MAINTENANCE"] = True
+    backups = app.config["BACKUP_DIR"]
+    client = app.test_client()
+
+    response = client.get("/entrar")
+    response.close()  # a manutenção roda quando a resposta termina de sair
+    assert len(os.listdir(backups)) == 1
+    with app.app_context():
+        first = maintenance.last_run()
+        assert first is not None
+        from app.models import SiteSetting
+        assert "Backup:" in SiteSetting.get("manutencao_relatorio")
+
+    client.get("/entrar").close()  # no mesmo dia: não roda de novo
+    assert len(os.listdir(backups)) == 1
+
+    with app.app_context():
+        # Só uma requisição "ganha" a vez, mesmo chegando juntas.
+        from app.extensions import db
+        SiteSetting.put(maintenance.LAST_RUN_KEY, (datetime.utcnow() - timedelta(days=2)).isoformat())
+        db.session.commit()
+        assert maintenance.claim_daily_run() is True
+        assert maintenance.claim_daily_run() is False
+
+
+def test_manutencao_pelo_admin(mesa, app):
+    mesa.user("dono")
+    page = mesa.user("dono").post("/admin/manutencao", follow_redirects=True).get_data(as_text=True)
+    assert "Manutenção feita" in page and "Backup:" in page

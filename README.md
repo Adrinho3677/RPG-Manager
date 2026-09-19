@@ -294,21 +294,28 @@ Na aba **Web**, em **Static files**:
 ### 6. Recarregue
 Botão verde **Reload**. O site fica em `https://SEU_USUARIO.pythonanywhere.com`.
 
-### 7. Tarefa diária (backup, lembretes e limpeza)
-Na aba **Tasks**, crie **uma** tarefa diária — o plano gratuito só permite uma, por isso o
-comando faz tudo de uma vez:
+### 7. Manutenção diária (backup, lembretes e limpeza)
+**Não precisa configurar nada.** O plano gratuito do PythonAnywhere não tem tarefa agendada,
+então o próprio site faz a manutenção **no primeiro acesso de cada dia** — depois que a
+página já foi entregue, sem deixar ninguém esperando:
 
-```bash
-cd /home/SEU_USUARIO/RPG-Manager && /home/SEU_USUARIO/.virtualenvs/rpgmanager/bin/flask manutencao
-```
-
-- **Backup** em `instance/backups/`, mantendo os 14 mais recentes (`BACKUP_KEEP`), pela API de
+- **backup** em `instance/backups/`, mantendo os 14 mais recentes (`BACKUP_KEEP`), pela API de
   backup do SQLite (seguro com o site no ar);
 - **lembretes de sessão por e-mail** (só se houver e-mail configurado);
 - **limpeza** de retratos sem uso, uploads órfãos e cópias velhas da névoa;
 - às segundas, **backup por e-mail** para o administrador (só com e-mail, e se couber).
 
-Se você já tinha a tarefa com `flask backup`, troque por `flask manutencao`.
+Dia sem nenhum acesso não tem manutenção — mas também não teve nada novo para guardar.
+Em ⚙️ Administração aparece quando rodou pela última vez, e o botão **Rodar agora**.
+
+Para rodar à mão, no **Bash console**:
+
+```bash
+workon rpgmanager && cd ~/RPG-Manager && flask manutencao
+```
+
+(Se um dia tiver tarefa agendada, pode usar esse mesmo comando nela e desligar a automática
+com `os.environ['AUTO_MAINTENANCE'] = '0'` no arquivo WSGI.)
 
 Backup que só existe no mesmo servidor não protege de tudo: **baixe um de vez em quando** em
 ⚙️ → *Baixar backup* (o ⚙️ do topo acende quando passa de 7 dias).
@@ -409,6 +416,7 @@ O comando `flask backup` só funciona com SQLite; no MySQL use o backup da aba *
 | `MAIL_FROM` | `MAIL_USERNAME` | Remetente mostrado. |
 | `SITE_URL` | endereço da requisição | Endereço público, usado nos links dos e-mails. |
 | `ADMIN_USERNAMES` | a primeira conta | Quem acessa a administração (⚙️). |
+| `AUTO_MAINTENANCE` | `1` | Manutenção diária no primeiro acesso do dia. `0` para só rodar `flask manutencao` à mão. |
 
 ---
 

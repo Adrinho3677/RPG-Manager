@@ -77,6 +77,8 @@ def create_app(config_class=Config):
     register_errors(app)
     register_security_headers(app)
     register_static_versions(app)
+    from app.maintenance import register_daily
+    register_daily(app)
 
     from app.commands import register_commands
     register_commands(app)

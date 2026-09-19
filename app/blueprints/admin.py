@@ -8,12 +8,13 @@ import secrets
 from datetime import datetime
 from functools import wraps
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
+from flask import (Blueprint, abort, current_app, flash, g, redirect, render_template, request,
+                   send_file, url_for)
 from flask_login import current_user, login_required
 
 from app import maintenance
 from app.extensions import db
-from app.models import Campaign, CampaignMember, Character, ErrorReport, User
+from app.models import Campaign, CampaignMember, Character, ErrorReport, SiteSetting, User
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -71,7 +72,8 @@ def index():
         errors=ErrorReport.query.order_by(ErrorReport.last_at.desc()).limit(50).all(),
         usage={k: _human(v) for k, v in usage.items()}, preview=preview,
         preview_size=_human(preview["bytes"]), days=maintenance.days_since_backup_download(),
-        admin_names=maintenance.admin_names(),
+        admin_names=maintenance.admin_names(), last_run=maintenance.last_run(),
+        last_report=SiteSetting.get("manutencao_relatorio"),
     )
 
 
@@ -112,6 +114,17 @@ def cleanup():
     flash("Limpeza feita: %d arquivo(s), %s liberados." % (result["files"], _human(result["bytes"])),
           "success")
     return redirect(url_for("admin.index") + "#arquivos")
+
+
+@bp.route("/manutencao", methods=["POST"])
+@admin_required
+def run_maintenance():
+    """Roda backup + lembretes + limpeza agora (sem esperar o dia seguinte)."""
+    lines = maintenance.run_all(current_app._get_current_object())
+    SiteSetting.put(maintenance.LAST_RUN_KEY, datetime.utcnow().isoformat())
+    db.session.commit()
+    flash("Manutenção feita: " + " · ".join(lines), "success")
+    return redirect(url_for("admin.index") + "#manutencao")
 
 
 @bp.route("/backup")

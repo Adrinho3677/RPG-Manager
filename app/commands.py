@@ -81,18 +81,10 @@ def register_commands(app):
     @app.cli.command("manutencao")
     def maintenance_command():
         """A tarefa diária: backup, lembretes de sessão e limpeza (o plano gratuito só tem uma)."""
-        from app import maintenance, reminders
-        try:
-            target = make_backup(app)
-            click.echo("Backup: %s" % target)
-        except click.ClickException as error:
-            click.echo("Backup: %s" % error.message)
-        click.echo("Lembretes por e-mail enviados: %d" % reminders.send_due())
-        result = maintenance.cleanup()
-        click.echo("Limpeza: %d arquivo(s), %.1f MB." % (result["files"], result["bytes"] / 1048576.0))
-        from datetime import date
-        if date.today().weekday() == 0:  # segunda-feira: backup por e-mail, se houver e-mail
-            click.echo("Backup por e-mail: %d" % maintenance.email_backup())
+        from app import maintenance
+        with app.test_request_context(base_url=app.config.get("SITE_URL") or None):
+            for line in maintenance.run_all(app):
+                click.echo(line)
 
     @app.cli.command("backup")
     def backup_command():

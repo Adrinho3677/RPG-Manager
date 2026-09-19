@@ -71,3 +71,8 @@ class Config:
     # Administradores do site (página /admin: erros, usuários, limpeza, backup).
     # Nomes de usuário separados por vírgula; vazio = a primeira conta criada.
     ADMIN_USERNAMES = os.environ.get("ADMIN_USERNAMES", "")
+
+    # Manutenção diária (backup, lembretes, limpeza) disparada pelo primeiro
+    # acesso do dia — o plano gratuito do PythonAnywhere não tem tarefa agendada.
+    # Desligue com AUTO_MAINTENANCE=0 se preferir rodar `flask manutencao` à mão.
+    AUTO_MAINTENANCE = _flag("AUTO_MAINTENANCE", True)

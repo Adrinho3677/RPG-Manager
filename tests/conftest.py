@@ -34,6 +34,7 @@ def make_config(db_path, tmp_path, csrf=False):
         UPLOAD_DIR = str(tmp_path / "uploads")
         BACKUP_DIR = str(tmp_path / "backups")
         BACKUP_KEEP = 3
+        AUTO_MAINTENANCE = False  # os testes que precisam ligam na mão
     return TestConfig
 
 
