@@ -11,6 +11,7 @@ from app.models import GameSystem
 from app.presets import GENERICO
 from app.formula import known_names, validate as validate_formula
 from app.sheet import REST_MODES
+from app import initiative as initiative_helper
 from app.utils import clean_color, script_json, slugify, to_float, to_int, unique_key
 
 bp = Blueprint("systems", __name__, url_prefix="/sistemas")
@@ -166,6 +167,8 @@ def edit(system_id):
         display_choices=DISPLAY_CHOICES,
         skill_mode_choices=SKILL_MODE_CHOICES,
         roll_choices=ROLL_CHOICES,
+        initiative=initiative_helper.spec_of(system),
+        initiative_sources=initiative_helper.SOURCES,
         inventory_modes=INVENTORY_MODES,
         rest_modes=REST_MODES,
         default_labels=DEFAULT_LABELS,
@@ -352,6 +355,7 @@ def clean_payload(payload):
             "success_on": to_int(roll_config.get("success_on"), 6),
         },
         "training_levels": levels,
+        "initiative": initiative_helper.clean(payload.get("initiative"), payload),
         "attributes": attributes,
         "bars": bars,
         "skills": skills,

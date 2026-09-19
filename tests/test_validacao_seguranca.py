@@ -109,3 +109,28 @@ def test_arquivos_estaticos_levam_versao_na_url(app):
     html = app.test_client().get("/entrar").get_data(as_text=True)
     assert "/static/js/app.js?v=" in html
     assert "/static/css/style.css?v=" in html
+
+
+def test_nenhum_template_monta_javascript_com_dados():
+    """onsubmit="confirm('{{ nome }}')" roda o nome como código: proibido."""
+    import glob
+    import os
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..", "app", "templates")
+    bad = []
+    for path in glob.glob(os.path.join(root, "**", "*.html"), recursive=True):
+        text = open(path, encoding="utf-8").read()
+        for match in re.finditer(r'\bon[a-z]+="[^"]*"', text):
+            if "{{" in match.group(0):
+                bad.append("%s: %s" % (os.path.basename(path), match.group(0)))
+    assert not bad, bad
+
+
+def test_nome_malicioso_na_confirmacao_fica_inofensivo(mesa):
+    camp, code = mesa.campaign("mestre")
+    mesa.join("ana", code)
+    nome = "x');alert(1);//"
+    character_id = mesa.character("ana", camp, name=nome)
+    html = mesa.user("mestre").get("/fichas/%d" % character_id).get_data(as_text=True)
+    assert "alert(1)" not in html.split("data-confirm=")[0][-200:]
+    assert 'data-confirm="Excluir a ficha de x&#39;);alert(1);//?"' in html

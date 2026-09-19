@@ -65,10 +65,19 @@
             {% endif %}
             {% if is_master and note.visibility == 'mestre' %}
               <form method="post" action="{{ url_for('campaigns.note_reveal', campaign_id=campaign.id, note_id=note.id) }}"
-                    onsubmit="return confirm('Revelar “{{ note.title }}” para a mesa toda?')">
+                    data-confirm="Revelar “{{ note.title }}” para a mesa toda?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="target" value="mesa">
                 <button class="btn btn-gold btn-sm" type="submit">👁️ Revelar</button>
+              </form>
+            {% endif %}
+            {% if is_master %}
+              <form method="post" action="{{ url_for('table.spotlight', campaign_id=campaign.id) }}"
+                    {% if note.visibility != 'mesa' %}data-confirm="Isto revela “{{ note.title }}” para a mesa toda e abre na tela de todos. Continuar?"{% endif %}>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="kind" value="anotacao">
+                <input type="hidden" name="id" value="{{ note.id }}">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Abre a anotação na tela de todos da mesa agora">📣 Mostrar para a mesa</button>
               </form>
             {% endif %}
             <span class="muted small" style="margin-left:auto">{{ note.author.username }}</span>

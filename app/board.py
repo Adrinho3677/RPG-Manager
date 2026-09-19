@@ -12,6 +12,9 @@ O estado fica em Encounter.board (JSON):
     revealed      quadrados revelados, como "x,y"
     players_move  jogadores podem mover as próprias fichas
     tokens        {uid do combatente: {"x", "y", "hidden"}}
+    areas         áreas de efeito [{id, shape (circle|cone|line), ox, oy, angle, size,
+                  owner, who}] — origem e tamanho em quadrados
+    markers       {id: {type, x, y, label, hidden}} — portas, armadilhas etc.
     version       sobe a cada mudança
 
 As fichas do mapa SÃO os combatentes do rastreador (mesmo uid): nada de
@@ -20,11 +23,11 @@ cadastro duplicado. Combatente fora de `tokens` está "fora do mapa".
 Segredos, como no rastreador: para jogadores, fichas escondidas pelo mestre e
 inimigos debaixo da névoa nem entram na resposta.
 """
-import json
+import hashlib
+import secrets
 
-from sqlalchemy import text
+from flask import url_for
 
-from app.extensions import db
 from app.utils import to_float, to_int
 
 MAX_SIDE = 60
@@ -39,7 +42,15 @@ DEFAULTS = {
     "revealed": [],
     "players_move": True,
     "tokens": {},
+    "areas": [],
+    "markers": {},
     "version": 0,
+}
+MAX_AREAS = 30
+MAX_MARKERS = 80
+AREA_SHAPES = ("circle", "cone", "line")
+MARKER_TYPES = {
+    "porta": "🚪", "armadilha": "⚠️", "tesouro": "💰", "alvo": "🎯", "nota": "📌",
 }
 
 
@@ -91,6 +102,35 @@ def normalize(raw):
             "hidden": bool(pos.get("hidden")),
         }
     board["tokens"] = tokens
+
+    areas = []
+    for area in raw.get("areas") or []:
+        if not isinstance(area, dict) or area.get("shape") not in AREA_SHAPES:
+            continue
+        areas.append({
+            "id": str(area.get("id") or "")[:16] or secrets.token_hex(4),
+            "shape": area["shape"],
+            "ox": _clamp(to_float(area.get("ox"), 0), 0, board["cols"]),
+            "oy": _clamp(to_float(area.get("oy"), 0), 0, board["rows"]),
+            "angle": to_float(area.get("angle"), 0) % 360,
+            "size": _clamp(to_float(area.get("size"), 1), 0.5, MAX_SIDE * 2),
+            "owner": to_int(area.get("owner"), 0),
+            "who": str(area.get("who") or "")[:64],
+        })
+    board["areas"] = areas[-MAX_AREAS:]
+
+    markers = {}
+    for mid, marker in (raw.get("markers") or {}).items():
+        if not isinstance(marker, dict) or marker.get("type") not in MARKER_TYPES:
+            continue
+        markers[str(mid)[:16]] = {
+            "type": marker["type"],
+            "x": _clamp(to_int(marker.get("x"), 0), 0, board["cols"] - 1),
+            "y": _clamp(to_int(marker.get("y"), 0), 0, board["rows"] - 1),
+            "label": str(marker.get("label") or "").strip()[:60],
+            "hidden": bool(marker.get("hidden", True)),
+        }
+    board["markers"] = markers
     return board
 
 
@@ -160,35 +200,97 @@ def fog_all(board, reveal):
     return board
 
 
-def update(encounter, change):
-    """Aplica `change(board)` sem perder a mudança de outra pessoa.
+def add_area(board, payload, user):
+    """Área de efeito (círculo, cone ou linha). Qualquer um da mesa pode pôr."""
+    shape = payload.get("shape")
+    if shape not in AREA_SHAPES:
+        raise BoardError("Forma desconhecida.")
+    if len(board["areas"]) >= MAX_AREAS:
+        raise BoardError("Mapa com áreas demais: limpe algumas.")
+    size = to_float(payload.get("size"), 0)
+    if not 0 < size <= MAX_SIDE * 2:
+        raise BoardError("Tamanho da área inválido.")
+    board["areas"].append({
+        "id": secrets.token_hex(4), "shape": shape,
+        "ox": _clamp(to_float(payload.get("ox"), 0), 0, board["cols"]),
+        "oy": _clamp(to_float(payload.get("oy"), 0), 0, board["rows"]),
+        "angle": to_float(payload.get("angle"), 0) % 360,
+        "size": size, "owner": user.id, "who": user.username,
+    })
+    return board
 
-    Mestre e jogadores movem fichas ao mesmo tempo. Ler, alterar e gravar o
-    JSON inteiro faria um apagar o movimento do outro; por isso a gravação só
-    vale se o tabuleiro ainda for o que foi lido (compare-and-swap), e senão
-    tenta de novo em cima do valor novo.
-    """
-    for _ in range(5):
-        raw = db.session.execute(text("SELECT board FROM encounters WHERE id = :id"),
-                                 {"id": encounter.id}).scalar()
-        try:
-            loaded = json.loads(raw) if raw else None
-        except ValueError:
-            loaded = None
-        board = change(normalize(loaded))
+
+def remove_area(board, area_id, user, is_master):
+    area = next((a for a in board["areas"] if a["id"] == area_id), None)
+    if area is None:
+        raise BoardError("Essa área já saiu do mapa.")
+    if not is_master and area["owner"] != user.id:
+        raise BoardError("Só quem pôs a área (ou o mestre) pode tirá-la.")
+    board["areas"].remove(area)
+    return board
+
+
+def clear_areas(board):
+    board["areas"] = []
+    return board
+
+
+def change_marker(board, payload):
+    """Mestre: põe, move, revela/esconde, renomeia ou tira um marcador."""
+    op = payload.get("op")
+    if op == "add":
+        if payload.get("type") not in MARKER_TYPES:
+            raise BoardError("Tipo de marcador desconhecido.")
+        if len(board["markers"]) >= MAX_MARKERS:
+            raise BoardError("Marcadores demais neste mapa.")
+        x, y = to_int(payload.get("x"), -1), to_int(payload.get("y"), -1)
+        if not (0 <= x < board["cols"] and 0 <= y < board["rows"]):
+            raise BoardError("Fora do mapa.")
+        board["markers"][secrets.token_hex(4)] = {
+            "type": payload["type"], "x": x, "y": y, "hidden": True,
+            "label": str(payload.get("label") or "").strip()[:60]}
+        return board
+    marker = board["markers"].get(str(payload.get("id")))
+    if marker is None:
+        raise BoardError("Esse marcador não está mais no mapa.")
+    if op == "remove":
+        del board["markers"][str(payload.get("id"))]
+    elif op == "update":
+        if "x" in payload or "y" in payload:
+            x, y = to_int(payload.get("x"), marker["x"]), to_int(payload.get("y"), marker["y"])
+            if not (0 <= x < board["cols"] and 0 <= y < board["rows"]):
+                raise BoardError("Fora do mapa.")
+            marker.update(x=x, y=y)
+        if "hidden" in payload:
+            marker["hidden"] = bool(payload.get("hidden"))
+        if "label" in payload:
+            marker["label"] = str(payload.get("label") or "").strip()[:60]
+        if payload.get("type") in MARKER_TYPES:
+            marker["type"] = payload["type"]
+    else:
+        raise BoardError("Operação desconhecida.")
+    return board
+
+
+def fog_key(board):
+    """Resumo do que está revelado: muda a URL da imagem recortada."""
+    raw = "%s|%d|%d|%s" % (board["map_id"], board["cols"], board["rows"], ";".join(board["revealed"]))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def update(encounter, change):
+    """Aplica `change(board)` sem perder o movimento de outra pessoa (ver app/cas.py)."""
+    from app.cas import ConflictError, update_json
+
+    def bump(board):
+        board = change(board)
         board["version"] += 1
-        new_raw = json.dumps(board, ensure_ascii=False)
-        if raw is None:
-            sql = "UPDATE encounters SET board = :new WHERE id = :id AND board IS NULL"
-        else:
-            sql = "UPDATE encounters SET board = :new WHERE id = :id AND board = :old"
-        result = db.session.execute(text(sql), {"new": new_raw, "old": raw, "id": encounter.id})
-        if result.rowcount == 1:
-            db.session.commit()
-            db.session.expire(encounter, ["board"])
-            return board
-        db.session.rollback()
-    raise BoardError("O mapa está sendo alterado por várias pessoas agora. Tente de novo.")
+        return board
+
+    try:
+        return update_json("encounters", "board", encounter.id, bump, normalize, obj=encounter)
+    except ConflictError as error:
+        raise BoardError(str(error))
 
 
 # ------------------------------------------------------------------- leitura
@@ -258,12 +360,28 @@ def view(encounter, state, user, is_master, maps):
         elif is_master or mine:
             bench.append(item)
 
+    markers = []
+    for mid, marker in board["markers"].items():
+        if not is_master and (marker["hidden"] or (
+                board["fog"] and _cell(marker["x"], marker["y"]) not in revealed)):
+            continue
+        item = dict(marker, id=mid, icon=MARKER_TYPES[marker["type"]])
+        if not is_master:
+            item.pop("hidden", None)
+        markers.append(item)
+
     asset = maps.get(board["map_id"])
+    map_url = asset.url if asset else None
+    if asset and board["fog"] and not is_master:
+        # Com névoa, o jogador recebe a imagem já recortada no servidor: o que
+        # não foi revelado nem chega ao navegador dele.
+        map_url = url_for("campaigns.board_image", campaign_id=encounter.campaign_id,
+                          encounter_id=encounter.id, v=fog_key(board))
     payload = {
         "ok": True,
         "version": board["version"],
         "round_number": state.get("round_number"),
-        "map_url": asset.url if asset else None,
+        "map_url": map_url,
         "map_title": asset.title if asset else "",
         "cols": board["cols"],
         "rows": board["rows"],
@@ -275,6 +393,10 @@ def view(encounter, state, user, is_master, maps):
         "revealed": board["revealed"] if board["fog"] else [],
         "tokens": tokens,
         "bench": bench,
+        "markers": markers,
+        "areas": board["areas"],
+        "marker_types": MARKER_TYPES,
+        "user_id": getattr(user, "id", None),
         "is_master": bool(is_master),
     }
     if is_master:

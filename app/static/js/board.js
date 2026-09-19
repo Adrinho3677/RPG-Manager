@@ -42,14 +42,72 @@
     return String(Math.round(value * 100) / 100).replace(".", ",");
   }
 
+  /* Áreas de efeito, em unidades de quadrado (origem pode cair no meio ou na
+     quina de um quadrado). Uma ficha é atingida se o centro do quadrado dela
+     está dentro da forma. Cone de 53° (largura igual ao comprimento, como em
+     D&D); linha com 1 quadrado de largura. */
+  var CONE_HALF = 26.57;
+  function angleDiff(a, b) {
+    var d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+  }
+  function areaHits(area, token) {
+    var dx = token.x + 0.5 - area.ox, dy = token.y + 0.5 - area.oy;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (area.shape === "circle") return dist <= area.size + 1e-6;
+    var rad = area.angle * Math.PI / 180;
+    if (area.shape === "cone") {
+      if (dist < 1e-6 || dist > area.size + 0.01) return false;
+      return angleDiff(Math.atan2(dy, dx) * 180 / Math.PI, area.angle) <= CONE_HALF + 0.5;
+    }
+    var along = dx * Math.cos(rad) + dy * Math.sin(rad);
+    var across = Math.abs(-dx * Math.sin(rad) + dy * Math.cos(rad));
+    return along >= 0 && along <= area.size + 1e-6 && across <= 0.5 + 1e-6;
+  }
+  function areaShape(area) {
+    var NS = "http://www.w3.org/2000/svg", node;
+    if (area.shape === "circle") {
+      node = document.createElementNS(NS, "circle");
+      node.setAttribute("cx", area.ox);
+      node.setAttribute("cy", area.oy);
+      node.setAttribute("r", area.size);
+      return node;
+    }
+    var rad = area.angle * Math.PI / 180, points = [];
+    if (area.shape === "cone") {
+      points.push([area.ox, area.oy]);
+      for (var i = 0; i <= 12; i++) {
+        var a = rad + (-CONE_HALF + i * CONE_HALF / 6) * Math.PI / 180;
+        points.push([area.ox + Math.cos(a) * area.size, area.oy + Math.sin(a) * area.size]);
+      }
+    } else {
+      var nx = -Math.sin(rad) * 0.5, ny = Math.cos(rad) * 0.5;
+      var ex = area.ox + Math.cos(rad) * area.size, ey = area.oy + Math.sin(rad) * area.size;
+      points = [[area.ox + nx, area.oy + ny], [ex + nx, ey + ny], [ex - nx, ey - ny], [area.ox - nx, area.oy - ny]];
+    }
+    node = document.createElementNS(NS, "polygon");
+    node.setAttribute("points", points.map(function (p) { return p[0].toFixed(3) + "," + p[1].toFixed(3); }).join(" "));
+    return node;
+  }
+  var SHAPE_ICON = { circle: "◯", cone: "◭", line: "━" };
+
   document.querySelectorAll("[data-board]").forEach(function (panel) {
     var urls = {
       state: panel.dataset.stateUrl,
       move: panel.dataset.moveUrl,
       config: panel.dataset.configUrl,
       hide: panel.dataset.hideUrl,
-      fog: panel.dataset.fogUrl
+      fog: panel.dataset.fogUrl,
+      area: panel.dataset.areaUrl,
+      marker: panel.dataset.markerUrl
     };
+    var markerLayer = panel.querySelector("[data-board-markers]");
+    var areaLayer = panel.querySelector("[data-board-areas]");
+    var areaList = panel.querySelector("[data-board-area-list]");
+    var sizeInput = panel.querySelector("[data-area-size]");
+    var areaShapeNow = null;   // forma escolhida na barra (modo "area")
+    var aiming = null;         // área sendo mirada agora
+    var selectedMarker = null; // id do marcador selecionado (mestre)
     var scroller = panel.querySelector("[data-board-scroll]");
     var boardEl = panel.querySelector("[data-board-surface]");
     var image = panel.querySelector("[data-board-image]");
@@ -69,6 +127,7 @@
     var paint = null;         // pincel de névoa em andamento
     var busy = 0;             // pedidos em andamento: não sobrescreve a tela
     var configTimer = null;
+    var afterSend = function () {};
 
     function setStatus(text, kind) {
       if (!status) return;
@@ -176,8 +235,115 @@
       });
     }
 
+    function renderMarkers() {
+      markerLayer.innerHTML = "";
+      (state.markers || []).forEach(function (marker) {
+        var node = el("div", "marker" + (marker.hidden ? " is-hidden" : "") +
+                              (marker.id === selectedMarker ? " is-selected" : ""), marker.icon);
+        node.dataset.marker = marker.id;
+        node.style.width = node.style.height = cell + "px";
+        node.style.transform = "translate(" + marker.x * cell + "px," + marker.y * cell + "px)";
+        node.title = (marker.label || marker.type) + (marker.hidden ? " · escondido dos jogadores" : "");
+        markerLayer.appendChild(node);
+      });
+    }
+
+    function areaCells(area) {
+      return state.tokens.filter(function (t) { return areaHits(area, t); });
+    }
+
+    function sizeInCells() {
+      var value = parseFloat(String(sizeInput ? sizeInput.value : "1").replace(",", "."));
+      if (!(value > 0)) return 0;
+      return state.cell_size ? value / state.cell_size : value;
+    }
+
+    function renderAreas() {
+      var width = state.cols * cell, height = state.rows * cell;
+      areaLayer.setAttribute("viewBox", "0 0 " + state.cols + " " + state.rows);
+      areaLayer.setAttribute("width", width);
+      areaLayer.setAttribute("height", height);
+      areaLayer.innerHTML = "";
+      var all = (state.areas || []).slice();
+      if (aiming) all.push(aiming);
+      all.forEach(function (area) {
+        var node = areaShape(area);
+        node.setAttribute("class", "area" + (area === aiming ? " is-aiming" : "") +
+                                   (area.owner === state.user_id ? " is-mine" : ""));
+        areaLayer.appendChild(node);
+      });
+
+      if (!areaList) return;
+      areaList.innerHTML = "";
+      areaList.hidden = !(state.areas || []).length;
+      (state.areas || []).forEach(function (area) {
+        var row = el("div", "area-row");
+        var sizeText = state.cell_size ? formatNumber(area.size * state.cell_size) + " " + state.cell_unit
+          : formatNumber(area.size) + " quadrados";
+        var hit = areaCells(area).map(function (t) { return t.name; });
+        row.appendChild(el("span", "", SHAPE_ICON[area.shape] + " " + sizeText + " · " + (area.who || "?")));
+        row.appendChild(el("span", "muted small", hit.length ? "atinge: " + hit.join(", ") : "não atinge ninguém"));
+        if (state.is_master || area.owner === state.user_id) {
+          var remove = el("button", "btn btn-ghost btn-sm btn-icon", "✕");
+          remove.type = "button";
+          remove.title = "Tirar a área";
+          remove.addEventListener("click", function () { send(urls.area, { op: "remove", id: area.id }); });
+          row.appendChild(remove);
+        }
+        areaList.appendChild(row);
+      });
+      if (state.is_master && (state.areas || []).length > 1) {
+        var clear = el("button", "btn btn-ghost btn-sm", "Limpar todas as áreas");
+        clear.type = "button";
+        clear.addEventListener("click", function () { send(urls.area, { op: "clear" }); });
+        areaList.appendChild(clear);
+      }
+    }
+
+    function renderMarkerSelected() {
+      var marker = (state.markers || []).filter(function (m) { return m.id === selectedMarker; })[0];
+      if (!marker) { selectedMarker = null; return false; }
+      selectedBox.hidden = false;
+      selectedBox.appendChild(el("strong", "", marker.icon + " " + (marker.label || marker.type)));
+      selectedBox.appendChild(el("span", "muted small", "toque num quadrado para mover"));
+      var label = el("input");
+      label.type = "text";
+      label.placeholder = "Rótulo (ex.: porta trancada)";
+      label.value = marker.label || "";
+      label.maxLength = 60;
+      label.className = "marker-label";
+      label.setAttribute("aria-label", "Rótulo do marcador");
+      label.addEventListener("change", function () {
+        send(urls.marker, { op: "update", id: marker.id, label: label.value });
+      });
+      selectedBox.appendChild(label);
+      var toggle = el("button", "btn btn-ghost btn-sm", marker.hidden ? "👁 Revelar" : "🙈 Esconder");
+      toggle.type = "button";
+      toggle.addEventListener("click", function () {
+        send(urls.marker, { op: "update", id: marker.id, hidden: !marker.hidden });
+      });
+      selectedBox.appendChild(toggle);
+      var remove = el("button", "btn btn-ghost btn-sm", "Remover");
+      remove.type = "button";
+      remove.addEventListener("click", function () {
+        selectedMarker = null;
+        send(urls.marker, { op: "remove", id: marker.id });
+      });
+      selectedBox.appendChild(remove);
+      var close = el("button", "btn btn-ghost btn-sm btn-icon", "✕");
+      close.type = "button";
+      close.title = "Desmarcar";
+      close.addEventListener("click", function () { selectedMarker = null; render(); });
+      selectedBox.appendChild(close);
+      return true;
+    }
+
     function renderSelected() {
       if (!selectedBox) return;
+      if (selectedMarker) {
+        selectedBox.innerHTML = "";
+        if (renderMarkerSelected()) return;
+      }
       var token = selected && findToken(selected);
       selectedBox.innerHTML = "";
       selectedBox.hidden = !token;
@@ -226,9 +392,13 @@
         image.removeAttribute("src");
       }
       drawFog();
+      renderMarkers();
+      renderAreas();
       renderTokens();
       renderSelected();
-      if (!drag) info.textContent = hint();
+      if (!drag && !aiming && mode === "move") info.textContent = hint();
+      var unit = panel.querySelector("[data-area-unit]");
+      if (unit) unit.textContent = state.cell_size ? state.cell_unit : "quadrados";
       syncConfig();
     }
 
@@ -273,7 +443,10 @@
       set("fog", state.fog);
       set("players_move", state.players_move);
       panel.querySelectorAll("[data-fog-tools]").forEach(function (box) { box.hidden = !state.fog; });
-      if (!state.fog && mode !== "move") setMode("move");
+      var warning = config.querySelector("[data-fog-warning]");
+      var current = state.maps.filter(function (m) { return m.id === state.map_id; })[0];
+      if (warning) warning.hidden = !(state.fog && current && !current.hidden);
+      if (!state.fog && (mode === "reveal" || mode === "cover")) setMode("move");
     }
 
     function readConfig() {
@@ -303,6 +476,8 @@
       state.tokens = state.tokens || [];
       state.bench = state.bench || [];
       state.revealed = state.revealed || [];
+      state.markers = state.markers || [];
+      state.areas = state.areas || [];
       if (selected && !findToken(selected)) selected = null;
       render();
     }
@@ -318,6 +493,7 @@
         }
         setStatus("");
         adopt(data);
+        afterSend();
       }).catch(function () {
         busy -= 1;
         setStatus("sem conexão", "error");
@@ -325,9 +501,9 @@
     }
 
     function refresh(force) {
-      if (!force && (busy || drag || paint || document.hidden || !panel.open)) return;
+      if (!force && (busy || drag || paint || aiming || document.hidden || !panel.open)) return;
       return window.api(urls.state).then(function (data) {
-        if (!force && (busy || drag || paint)) return;
+        if (!force && (busy || drag || paint || aiming)) return;
         adopt(data);
       }).catch(function () {});
     }
@@ -339,6 +515,18 @@
       var y = Math.floor((event.clientY - rect.top) / cell);
       if (x < 0 || y < 0 || x >= state.cols || y >= state.rows) return null;
       return { x: x, y: y };
+    }
+
+    function pointAt(event, snap) {
+      var rect = boardEl.getBoundingClientRect();
+      var x = (event.clientX - rect.left) / cell, y = (event.clientY - rect.top) / cell;
+      if (snap) { x = Math.round(x * 2) / 2; y = Math.round(y * 2) / 2; }  // centro ou quina
+      return { x: Math.max(0, Math.min(state.cols, x)), y: Math.max(0, Math.min(state.rows, y)) };
+    }
+
+    function aimInfo() {
+      var hit = areaCells(aiming).map(function (t) { return t.name; });
+      info.textContent = SHAPE_ICON[aiming.shape] + " " + (hit.length ? "atinge: " + hit.join(", ") : "não atinge ninguém");
     }
 
     function distance(a, b) {
@@ -402,12 +590,45 @@
       var target = cellAt(event);
       var tokenEl = event.target.closest(".token");
 
-      if (state.is_master && mode !== "move") {
+      if (mode === "area") {
+        var size = sizeInCells();
+        if (!size) { setStatus("informe o tamanho da área", "error"); return; }
+        event.preventDefault();
+        var origin = pointAt(event, true);
+        aiming = { shape: areaShapeNow, ox: origin.x, oy: origin.y, angle: 0, size: size,
+                   owner: state.user_id, pointer: event.pointerId };
+        capture(event);
+        renderAreas();
+        aimInfo();
+        return;
+      }
+
+      if (state.is_master && mode === "marker") {
+        if (!target) return;
+        var type = panel.querySelector("[data-marker-type]");
+        send(urls.marker, { op: "add", type: type ? type.value : "nota", x: target.x, y: target.y });
+        setMode("move");
+        return;
+      }
+
+      if (state.is_master && (mode === "reveal" || mode === "cover")) {
         if (!target) return;
         event.preventDefault();
         paint = { cells: [], seen: {}, pointer: event.pointerId };
         capture(event);
         paintLine(target);
+        return;
+      }
+
+      var markerEl = event.target.closest(".marker");
+      if (markerEl) {
+        if (state.is_master) {
+          selectedMarker = selectedMarker === markerEl.dataset.marker ? null : markerEl.dataset.marker;
+          selected = null;
+          render();
+        } else {
+          info.textContent = markerEl.title;
+        }
         return;
       }
 
@@ -428,6 +649,21 @@
     });
 
     boardEl.addEventListener("pointermove", function (event) {
+      if (aiming && event.pointerId === aiming.pointer) {
+        if (aiming.shape !== "circle") {
+          var p = pointAt(event, false);
+          if (Math.abs(p.x - aiming.ox) + Math.abs(p.y - aiming.oy) > 0.2) {
+            aiming.angle = (Math.atan2(p.y - aiming.oy, p.x - aiming.ox) * 180 / Math.PI + 360) % 360;
+          }
+        } else {
+          var c = pointAt(event, true);
+          aiming.ox = c.x;
+          aiming.oy = c.y;
+        }
+        renderAreas();
+        aimInfo();
+        return;
+      }
       if (paint && event.pointerId === paint.pointer) {
         var target = cellAt(event);
         if (target) paintLine(target);
@@ -447,6 +683,18 @@
     });
 
     function endPointer(event, cancelled) {
+      if (aiming && event.pointerId === aiming.pointer) {
+        var area = aiming;
+        aiming = null;
+        setMode("move");
+        if (!cancelled) {
+          send(urls.area, { op: "add", shape: area.shape, ox: area.ox, oy: area.oy,
+                            angle: area.angle, size: area.size });
+        } else {
+          render();
+        }
+        return;
+      }
       if (paint && event.pointerId === paint.pointer) {
         var cells = paint.cells, reveal = mode === "reveal";
         paint = null;
@@ -465,7 +713,12 @@
       }
       if (current.moved || cancelled) { render(); return; }  // rolou a tela, não foi toque
 
+      if (!current.uid && target && selectedMarker && state.is_master) {
+        send(urls.marker, { op: "update", id: selectedMarker, x: target.x, y: target.y });
+        return;
+      }
       if (current.uid) {
+        selectedMarker = null;
         select(selected === current.uid ? null : current.uid);
       } else if (target && selected) {
         if (!placeSelected(target)) select(null);
@@ -483,18 +736,34 @@
       select(selected === chip.dataset.uid ? null : chip.dataset.uid);
     });
 
-    function setMode(next) {
+    function setMode(next, shape) {
       mode = next;
+      areaShapeNow = next === "area" ? shape : null;
       panel.querySelectorAll("[data-board-mode]").forEach(function (button) {
         button.classList.toggle("active", button.dataset.boardMode === mode);
       });
+      panel.querySelectorAll("[data-area-shape]").forEach(function (button) {
+        button.classList.toggle("active", button.dataset.areaShape === areaShapeNow);
+      });
       boardEl.classList.toggle("painting", mode !== "move");
+      if (mode === "area") info.textContent = "Clique no mapa" +
+        (shape === "circle" ? " no centro da área" : " na origem e arraste para mirar");
+      else if (mode === "marker") info.textContent = "Clique no quadrado do marcador";
+      else if (state) info.textContent = hint();
     }
 
     panel.addEventListener("click", function (event) {
-      var button = event.target.closest("[data-board-action], [data-board-mode]");
+      var button = event.target.closest("[data-board-action], [data-board-mode], [data-area-shape]");
       if (!button || !panel.contains(button)) return;
-      if (button.dataset.boardMode) { setMode(button.dataset.boardMode); return; }
+      if (button.dataset.areaShape) {
+        if (mode === "area" && areaShapeNow === button.dataset.areaShape) setMode("move");
+        else setMode("area", button.dataset.areaShape);
+        return;
+      }
+      if (button.dataset.boardMode) {
+        setMode(mode === button.dataset.boardMode && mode !== "move" ? "move" : button.dataset.boardMode);
+        return;
+      }
       var action = button.dataset.boardAction;
       if (action === "zoom-in" || action === "zoom-out") {
         cell = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cell + (action === "zoom-in" ? 6 : -6)));
@@ -515,6 +784,7 @@
     });
 
     document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && mode !== "move") { aiming = null; setMode("move"); render(); return; }
       if (event.key === "Escape" && panel.classList.contains("board-full")) {
         panel.querySelector("[data-board-action=full]").click();
       }
@@ -529,7 +799,17 @@
     } catch (e) {
       refresh(true);
     }
-    setInterval(refresh, POLL_MS);
-    document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+    var owner = panel.closest("[data-encounter-id]");
+    if (window.Live && window.Live.enabled && owner) {
+      // Novidades do mapa chegam junto com o resto da página (uma requisição só).
+      var liveHandle = window.Live.register("board", owner.dataset.encounterId, function (data) {
+        if (busy || drag || paint || aiming) { liveHandle.reset(); return; }
+        adopt(data);
+      }, { fast: true });
+      afterSend = function () { liveHandle.reset(); };
+    } else {
+      setInterval(refresh, POLL_MS);
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+    }
   });
 })();

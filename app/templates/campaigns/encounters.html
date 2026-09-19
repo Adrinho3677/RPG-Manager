@@ -20,16 +20,20 @@
   </div>
 {% endif %}
 
+{% if is_master or clock_list(campaign, False) %}{% include "campaigns/_clocks.html" %}{% endif %}
+
 {% for encounter in encounters %}
-  <div class="card" id="e{{ encounter.id }}" data-encounter
+  <div class="card" id="e{{ encounter.id }}" data-encounter data-encounter-id="{{ encounter.id }}"
        data-save-url="{{ url_for('campaigns.encounter_save', campaign_id=campaign.id, encounter_id=encounter.id) }}"
        data-add-url="{{ url_for('campaigns.encounter_add', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+       data-init-url="{{ url_for('campaigns.encounter_initiative', campaign_id=campaign.id, encounter_id=encounter.id) }}"
        data-poll-url="{{ url_for('campaigns.encounter_poll', campaign_id=campaign.id, encounter_id=encounter.id) }}"
        data-editable="{{ 1 if is_master else 0 }}">
     <div class="card-head">
       <h2>{{ encounter.name }}</h2>
       <span class="actions">
         <span class="tag tag-gold">Rodada <strong data-round>{{ encounter.round_number }}</strong></span>
+        <span class="turn-name" data-turn-name></span>
         {% if is_master %}
           <button class="btn btn-ghost btn-sm" type="button" data-action="prev">◀ Anterior</button>
           <button class="btn btn-gold btn-sm" type="button" data-action="next">Próximo turno ▶</button>
@@ -48,6 +52,15 @@
           <button class="btn btn-ghost btn-sm" type="button" data-action="add">+ Combatente avulso</button>
           <button class="btn btn-ghost btn-sm" type="button" data-action="add-party">+ Trazer o grupo</button>
           <button class="btn btn-primary btn-sm" type="button" data-action="save">Salvar</button>
+        </div>
+        <div class="actions">
+          <select data-init-scope aria-label="Quem rola iniciativa">
+            <option value="todos">Todos</option>
+            <option value="inimigos">Só inimigos e NPCs</option>
+            <option value="grupo">Só o grupo</option>
+          </select>
+          <button class="btn btn-gold btn-sm" type="button" data-action="initiative"
+                  title="Rola pela regra do sistema; você ainda pode corrigir qualquer número">🎲 Rolar iniciativa</button>
           <span class="save-state" data-state></span>
         </div>
         {% if roster %}
@@ -66,7 +79,7 @@
         {% endif %}
         <form method="post" style="margin-left:auto"
               action="{{ url_for('campaigns.encounter_delete', campaign_id=campaign.id, encounter_id=encounter.id) }}"
-              onsubmit="return confirm('Excluir este combate?')">
+              data-confirm="Excluir este combate?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-danger btn-sm" type="submit">Excluir</button>
         </form>
@@ -78,10 +91,12 @@
     <details class="board-panel" data-board {% if board.tokens or board.map_url or loop.first %}open{% endif %}
              data-state-url="{{ url_for('campaigns.board_state', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-move-url="{{ url_for('campaigns.board_move', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-area-url="{{ url_for('campaigns.board_area', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              {% if is_master %}
              data-config-url="{{ url_for('campaigns.board_configure', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-hide-url="{{ url_for('campaigns.board_hide', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-fog-url="{{ url_for('campaigns.board_fog', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-marker-url="{{ url_for('campaigns.board_marker', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              {% endif %}>
       <summary><span>🗺️ Mapa tático</span><span class="board-status" data-board-status></span></summary>
 
@@ -90,6 +105,14 @@
           <button class="btn btn-ghost btn-sm btn-icon" type="button" data-board-action="zoom-out" title="Diminuir">−</button>
           <button class="btn btn-ghost btn-sm btn-icon" type="button" data-board-action="zoom-in" title="Aumentar">+</button>
           <button class="btn btn-ghost btn-sm" type="button" data-board-action="full">⛶ Tela cheia</button>
+          <span class="board-tool-group" title="Área de efeito: escolha a forma e clique (e arraste para mirar) no mapa">
+            <span class="muted small">Área</span>
+            <button class="btn btn-ghost btn-sm" type="button" data-area-shape="circle" title="Círculo (raio)">◯</button>
+            <button class="btn btn-ghost btn-sm" type="button" data-area-shape="cone" title="Cone (comprimento)">◭</button>
+            <button class="btn btn-ghost btn-sm" type="button" data-area-shape="line" title="Linha (comprimento, 1 quadrado de largura)">━</button>
+            <input type="text" inputmode="decimal" value="6" data-area-size aria-label="Tamanho da área" class="board-size">
+            <span class="muted small" data-area-unit></span>
+          </span>
           {% if is_master %}
             <span class="board-fog-tools" data-fog-tools hidden>
               <button class="btn btn-ghost btn-sm active" type="button" data-board-mode="move">✋ Mover</button>
@@ -97,6 +120,17 @@
               <button class="btn btn-ghost btn-sm" type="button" data-board-mode="cover">☁ Cobrir</button>
               <button class="btn btn-ghost btn-sm" type="button" data-board-action="reveal-all">Revelar tudo</button>
               <button class="btn btn-ghost btn-sm" type="button" data-board-action="cover-all">Cobrir tudo</button>
+            </span>
+            <span class="board-tool-group">
+              <select data-marker-type aria-label="Tipo de marcador">
+                <option value="porta">🚪 Porta</option>
+                <option value="armadilha">⚠️ Armadilha</option>
+                <option value="tesouro">💰 Tesouro</option>
+                <option value="alvo">🎯 Alvo</option>
+                <option value="nota">📌 Nota</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="marker"
+                      title="Clique num quadrado para pôr. Começa escondido dos jogadores.">📍 Pôr marcador</button>
             </span>
           {% endif %}
         </div>
@@ -130,6 +164,9 @@
                 <input type="text" name="cell_unit" maxlength="8" placeholder="m" aria-label="Unidade">
               </div>
             </div>
+            <p class="board-warning" data-fog-warning hidden>
+              A névoa está ligada, mas este mapa está <strong>visível na galeria</strong>: os jogadores
+              conseguem abrir a imagem inteira por lá. Esconda-o em <em>Mapas</em> para o segredo valer.</p>
             <div class="field board-checks">
               <label class="check"><input type="checkbox" name="grid"> Mostrar grade</label>
               <label class="check"><input type="checkbox" name="fog"> Névoa de guerra</label>
@@ -147,9 +184,12 @@
           <img class="board-image" data-board-image alt="" hidden draggable="false">
           <div class="board-grid"></div>
           <canvas class="board-fog" data-board-fog></canvas>
+          <div class="board-markers" data-board-markers></div>
+          <svg class="board-areas" data-board-areas aria-hidden="true"></svg>
           <div class="board-tokens" data-board-tokens></div>
         </div>
       </div>
+      <div class="board-area-list" data-board-area-list hidden></div>
       <p class="hint">Arraste uma ficha, ou toque nela e depois no quadrado de destino.
         {% if is_master %}Fichas do rastreador que ainda não estão no mapa aparecem acima dele.{% endif %}</p>
       <script type="application/json" data-board-payload>{{ board|tojson }}</script>
@@ -174,4 +214,5 @@
 <script src="{{ url_for('static', filename='js/dice.js') }}"></script>
 <script src="{{ url_for('static', filename='js/encounter.js') }}"></script>
 <script src="{{ url_for('static', filename='js/board.js') }}"></script>
+<script src="{{ url_for('static', filename='js/clocks.js') }}"></script>
 {% endblock %}

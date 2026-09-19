@@ -30,6 +30,24 @@
         </select>
       </div>
     </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="init_source">Iniciativa vem de</label>
+        <select id="init_source">
+          {% for value, label in initiative_sources %}
+            <option value="{{ value }}" {% if initiative.source == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="init_value">Qual (perícia ou atributo: nome, chave ou sigla · fórmula: ex. DES + RAC)</label>
+        <input type="text" id="init_value" value="{{ initiative.formula if initiative.source == 'formula' else initiative.key }}">
+      </div>
+      <div class="field" style="align-self:end">
+        <label class="check"><input type="checkbox" id="init_roll" {% if initiative.roll %}checked{% endif %}>
+          Rolar dados (senão, age em ordem do valor)</label>
+      </div>
+    </div>
     <div class="field">
       <label for="description">Descrição</label>
       <textarea id="description" name="description" style="min-height:70px">{{ system.description }}</textarea>

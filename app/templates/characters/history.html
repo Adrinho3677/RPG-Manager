@@ -25,7 +25,7 @@
           </span>
           <form method="post"
                 action="{{ url_for('characters.history_restore', character_id=character.id, revision_id=revision.id) }}"
-                onsubmit="return confirm('Voltar a ficha para como estava em {{ revision.created_at|hora }}? Isso também fica no histórico.')">
+                data-confirm="Voltar a ficha para como estava em {{ revision.created_at|hora }}? Isso também fica no histórico.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-ghost btn-sm" type="submit">Restaurar</button>
           </form>

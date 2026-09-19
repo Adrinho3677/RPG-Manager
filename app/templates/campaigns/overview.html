@@ -103,6 +103,16 @@
       </a>
     </div>
 
+    {% set cal = world_calendar(campaign) %}
+    {% if cal %}
+      <a class="card world-today" href="{{ url_for('table.calendar', campaign_id=campaign.id) }}">
+        <span class="muted small">📅 Hoje no mundo</span>
+        <strong>{{ world_date(campaign, cal.today, True) }}</strong>
+      </a>
+    {% endif %}
+
+    {% include "campaigns/_clocks.html" %}
+
     {% if revealed %}
       <div class="card card-highlight">
         <div class="card-head"><h3>👁️ Revelado para você</h3></div>
@@ -157,10 +167,14 @@
 
     {% if not is_master %}
       <form method="post" action="{{ url_for('campaigns.leave', campaign_id=campaign.id) }}"
-            onsubmit="return confirm('Sair desta campanha?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            data-confirm="Sair desta campanha?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-danger btn-block btn-sm" type="submit">Sair da campanha</button>
       </form>
     {% endif %}
   </aside>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/clocks.js') }}"></script>
 {% endblock %}

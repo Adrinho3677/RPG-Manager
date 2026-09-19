@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Importar campanha · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap" style="max-width:620px">
+  <div class="card">
+    <h1>Importar campanha</h1>
+    <p class="muted">Envie o <strong>.zip</strong> baixado em <em>Configurar → Exportar campanha</em>
+      (deste site ou de outro Grimório). Ele vira uma campanha nova, com você de mestre.</p>
+    <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="file">Arquivo da exportação</label>
+        <input type="file" id="file" name="file" accept=".zip,application/zip" required>
+        <span class="hint">Até 40 MB.</span>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Importar</button>
+    </form>
+    <div class="prose small" style="margin-top:1rem">
+      <p><strong>O que vem:</strong> sistema, fichas e retratos, sessões, anotações (inclusive as
+        secretas), mapas, combates com o mapa tático, linha do tempo, relógios, tesouro e calendário.</p>
+      <p><strong>O que não vem:</strong> as pessoas da mesa — convide de novo pelo link — nem as
+        presenças e as rolagens antigas.</p>
+      <p>As fichas dos jogadores ficam com você até cada um entrar na mesa; aí você entrega a
+        ficha a ele na tela <em>Mesa</em>.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

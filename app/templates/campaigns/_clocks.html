@@ -1,0 +1,25 @@
+{# Relógios de progresso — ver static/js/clocks.js #}
+<div class="card clocks-card" data-clocks data-master="{{ 1 if is_master else 0 }}"
+     data-create-url="{{ url_for('table.clock_create', campaign_id=campaign.id) }}"
+     data-update-url="{{ url_for('table.clock_update', campaign_id=campaign.id, clock_id=0) }}">
+  <div class="card-head">
+    <h3>⏳ Relógios de progresso</h3>
+    <span class="muted small" data-clock-status></span>
+  </div>
+  <div class="clock-list" data-clock-list></div>
+  {% if is_master %}
+    <form class="clock-create" data-clock-create>
+      <input type="text" name="title" placeholder="Ex.: O ritual se completa" maxlength="120" required
+             aria-label="Nome do novo relógio">
+      <select name="segments" aria-label="Segmentos">
+        {% for n in (4, 6, 8, 10, 12) %}<option value="{{ n }}" {% if n == 6 %}selected{% endif %}>{{ n }} segmentos</option>{% endfor %}
+      </select>
+      <select name="visibility" aria-label="Quem vê">
+        <option value="mesa">a mesa vê</option>
+        <option value="mestre">só eu</option>
+      </select>
+      <button class="btn btn-gold btn-sm" type="submit">Criar</button>
+    </form>
+  {% endif %}
+  <script type="application/json" data-clock-payload>{{ clock_list(campaign, is_master)|tojson }}</script>
+</div>

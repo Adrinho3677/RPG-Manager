@@ -20,6 +20,7 @@
       </div>
       <button class="btn btn-primary btn-block" type="submit">Entrar</button>
     </form>
+    <p class="small" style="margin-top:.8rem"><a href="{{ url_for('auth.forgot') }}">Esqueci minha senha</a></p>
     <p class="muted small" style="margin-top:1rem">
       Ainda não tem conta? <a href="{{ url_for('auth.register', next=request.args.get('next')) }}">Crie uma agora</a>.
     </p>

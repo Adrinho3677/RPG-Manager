@@ -123,7 +123,7 @@
         <p class="muted small">Criada por {{ note.author.username }}<br>
           Atualizada em {{ note.updated_at|hora }}</p>
         <form method="post" action="{{ url_for('campaigns.note_delete', campaign_id=campaign.id, note_id=note.id) }}"
-              onsubmit="return confirm('Excluir esta anotação?')">
+              data-confirm="Excluir esta anotação?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-danger btn-block btn-sm" type="submit">Excluir anotação</button>
         </form>

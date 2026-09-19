@@ -15,6 +15,7 @@
     var editable = root.dataset.editable === "1";
     var list = root.querySelector("[data-list]");
     var roundLabel = root.querySelector("[data-round]");
+    var turnLabel = root.querySelector("[data-turn-name]");
     var stateLabel = root.querySelector("[data-state]");
     var messagesBox = root.querySelector("[data-messages]");
     var state;
@@ -43,7 +44,7 @@
       messagesBox.innerHTML = "";
       messages.forEach(function (text) {
         var line = document.createElement("div");
-        line.textContent = "⏳ " + text;
+        line.textContent = "• " + text;
         messagesBox.appendChild(line);
       });
       clearTimeout(messagesBox._timer);
@@ -146,6 +147,10 @@
         list.appendChild(row);
       });
       roundLabel.textContent = state.round_number;
+      if (turnLabel) {
+        var current = state.combatants[state.turn_index];
+        turnLabel.textContent = current ? "Vez de " + (current.name || "?") : "";
+      }
     }
 
     function adopt(data) {
@@ -198,15 +203,15 @@
       return saving;
     }
 
-    function add(body) {
+    function add(body, url, busyText) {
       // Salva o que estiver pendente antes: a resposta substitui o estado da
       // tela, e sem isso uma edição ainda não enviada sumiria.
       var before = pendingEdits ? save() : saving;
       return Promise.resolve(before).then(function () {
-        setStatus("adicionando…");
-        return window.api(root.dataset.addUrl, { body: body });
+        setStatus(busyText || "adicionando…");
+        return window.api(url || root.dataset.addUrl, { body: body });
       }).then(function (data) {
-        if (!data.ok) { setStatus("não consegui adicionar"); return; }
+        if (!data.ok) { setStatus(data.message || "não deu certo"); return; }
         adopt(data);
         setStatus("");
       });
@@ -230,7 +235,16 @@
           add({ character_id: Number(select.value), quantity: Number(quantity.value) || 1 });
         }
       } else if (action === "next" || action === "prev") {
-        if (!state.combatants.length) return;
+        if (!state.combatants.length) {
+          // Sem ninguém na ordem ainda: o botão ao menos conta as rodadas e
+          // explica o que falta, em vez de não fazer nada.
+          state.round_number = action === "next" ? Number(state.round_number || 1) + 1
+            : Math.max(1, Number(state.round_number || 1) - 1);
+          showMessages(["Ninguém na ordem de iniciativa ainda — use “Trazer o grupo” ou “Adicionar da ficha”."]);
+          render();
+          save();
+          return;
+        }
         if (action === "next") {
           state.turn_index += 1;
           if (state.turn_index >= state.combatants.length) {
@@ -246,13 +260,27 @@
         }
         render();
         save();
+      } else if (action === "initiative") {
+        var scope = root.querySelector("[data-init-scope]");
+        add({ scope: scope ? scope.value : "todos" }, root.dataset.initUrl, "rolando iniciativa…");
       } else if (action === "save") {
         save();
       }
     });
 
-    /* ------------------------------------------- jogadores: acompanhar ao vivo */
-    if (!editable && root.dataset.pollUrl) {
+    /* ----------------------------------------------------- acompanhar ao vivo
+       Jogadores recebem cada mudança. O mestre também (PV mudado na ficha pelo
+       jogador, por exemplo), mas só quando não está no meio de uma edição. */
+    if (window.Live && window.Live.enabled && root.dataset.encounterId) {
+      var liveHandle = window.Live.register("enc", root.dataset.encounterId, function (data) {
+        if (editable && (saving || pendingEdits || root.contains(document.activeElement) &&
+                         document.activeElement.tagName === "INPUT")) {
+          liveHandle.reset();  // pergunta de novo na próxima rodada
+          return;
+        }
+        adopt(data);
+      }, { fast: true });
+    } else if (!editable && root.dataset.pollUrl) {
       var poll = function () {
         if (document.hidden) return;
         window.api(root.dataset.pollUrl).then(function (data) {

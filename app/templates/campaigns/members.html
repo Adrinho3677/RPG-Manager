@@ -23,7 +23,7 @@
           </span>
           {% if is_master and member.user_id != campaign.master_id %}
             <form method="post" action="{{ url_for('campaigns.remove_member', campaign_id=campaign.id, member_id=member.id) }}"
-                  onsubmit="return confirm('Remover {{ member.user.username }} da mesa?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  data-confirm="Remover {{ member.user.username }} da mesa?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-danger btn-sm" type="submit">Remover</button>
             </form>
           {% endif %}
@@ -33,6 +33,26 @@
   </div>
 
   <aside>
+    {% if is_master and imported %}
+      <div class="card card-highlight">
+        <h3>📦 Fichas importadas</h3>
+        <p class="muted small">Vieram de outra campanha. Quando o dono entrar na mesa, entregue a ficha a ele.</p>
+        {% for character in imported %}
+          <form method="post" class="handover" action="{{ url_for('campaigns.hand_over', campaign_id=campaign.id, character_id=character.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <span><strong>{{ character.name }}</strong> <span class="muted small">era de {{ character.imported_owner }}</span></span>
+            <select name="user_id" aria-label="Entregar {{ character.name }} a">
+              {% for member in roster if member.user_id != campaign.master_id %}
+                <option value="{{ member.user_id }}" {% if member.user.username|lower == character.imported_owner|lower %}selected{% endif %}>{{ member.user.username }}</option>
+              {% else %}
+                <option value="">ninguém na mesa ainda</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-gold btn-sm" type="submit">Entregar</button>
+          </form>
+        {% endfor %}
+      </div>
+    {% endif %}
     <div class="card">
       <h3>Código de convite</h3>
       <p class="muted small">Mande o link — quem abrir faz login (ou cria a conta) e entra:</p>
@@ -45,7 +65,7 @@
       <p class="center"><span class="code-pill">{{ campaign.invite_code }}</span></p>
       {% if is_master %}
         <form method="post" action="{{ url_for('campaigns.new_code', campaign_id=campaign.id) }}"
-              onsubmit="return confirm('Gerar um novo código? O atual deixa de valer.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              data-confirm="Gerar um novo código? O atual deixa de valer."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-ghost btn-block btn-sm" type="submit">Gerar novo código</button>
         </form>
       {% endif %}

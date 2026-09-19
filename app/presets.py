@@ -519,6 +519,18 @@ PRESETS = [
     },
 ]
 
+# Iniciativa de cada sistema (ver app/initiative.py).
+_INITIATIVE = {
+    "ordem-paranormal": {"source": "skill", "key": "iniciativa", "roll": True},
+    "dnd-5e": {"source": "attribute", "key": "des", "roll": True},
+    "tormenta-20": {"source": "skill", "key": "iniciativa", "roll": True},
+    "chamado-de-cthulhu": {"source": "attribute", "key": "des", "roll": False},
+    "vampiro-a-mascara": {"source": "formula", "formula": "DES + RAC", "roll": False},
+    "generico": {"source": "attribute", "key": "corpo", "roll": True},
+}
+for _preset in PRESETS:
+    _preset["data"]["initiative"] = dict(_INITIATIVE[_preset["slug"]])
+
 
 def sync_presets(db, GameSystem):
     """Cria (ou atualiza) os sistemas pré-definidos no banco."""

@@ -1,0 +1,24 @@
+{# Campos de data do calendário do mundo. Uso:
+   {% from "campaigns/_world_date.html" import world_date_fields with context %}
+   {{ world_date_fields(cal, valor_ordinal, rotulo) }} #}
+{% macro world_date_fields(cal, value, label="Data no mundo", prefix="world") %}
+  {% if cal %}
+    {% set parts = world_parts(cal, value) %}
+    <div class="field">
+      <label>{{ label }} <span class="muted small">(opcional)</span></label>
+      <div class="world-date">
+        <input type="number" name="{{ prefix }}_day" min="1" max="400" placeholder="dia"
+               value="{{ parts[2] if parts else '' }}" aria-label="Dia">
+        <select name="{{ prefix }}_month" aria-label="Mês">
+          <option value="">mês</option>
+          {% for month in cal.months %}
+            <option value="{{ loop.index }}" {% if parts and parts[1] == loop.index %}selected{% endif %}>{{ month.name }}</option>
+          {% endfor %}
+        </select>
+        <input type="number" name="{{ prefix }}_year" min="1" placeholder="ano"
+               value="{{ parts[0] if parts else '' }}" aria-label="Ano">
+        {% if cal.era %}<span class="muted small">{{ cal.era }}</span>{% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endmacro %}

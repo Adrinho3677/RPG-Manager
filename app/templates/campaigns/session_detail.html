@@ -50,6 +50,11 @@
               <label for="start_time">Horário</label>
               <input type="time" id="start_time" name="start_time" value="{{ session.start_time or '' }}">
             </div>
+            {% set cal = world_calendar(campaign) %}
+            {% if cal %}
+              {% from "campaigns/_world_date.html" import world_date_fields with context %}
+              {{ world_date_fields(cal, session.world_day, "Data no mundo") }}
+            {% endif %}
             <div class="field">
               <label for="status">Situação</label>
               <select id="status" name="status">
@@ -177,7 +182,7 @@
   </form>
 
   <form method="post" action="{{ url_for('campaigns.session_delete', campaign_id=campaign.id, session_id=session.id) }}"
-        onsubmit="return confirm('Excluir esta sessão?')" style="margin-top:1rem">
+        data-confirm="Excluir esta sessão?" style="margin-top:1rem">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-danger btn-sm" type="submit">Excluir sessão</button>
   </form>

@@ -250,3 +250,103 @@ def test_pagina_de_combate_mostra_o_mapa(mesa):
     html = mesa.user("ana").get("/campanhas/%d/combate" % camp).get_data(as_text=True)
     assert "data-board-payload" in html and "board.js" in html
     assert "data-config-url" not in html  # jogador não recebe as ferramentas do mestre
+
+
+# ------------------------------------------------ áreas, marcadores e névoa real
+def test_areas_de_efeito_quem_pode_por_e_tirar(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana, bia = mesa.user("mestre"), mesa.user("ana"), mesa.user("bia")
+    state = ana.post(base + "/mapa/area", json={"op": "add", "shape": "cone", "ox": 2.5, "oy": 2.5,
+                                                "angle": 90, "size": 4}).get_json()
+    area = state["areas"][0]
+    assert (area["shape"], area["who"], area["size"]) == ("cone", "ana", 4)
+    assert bia.post(base + "/mapa/area", json={"op": "remove", "id": area["id"]}).status_code == 400
+    assert bia.post(base + "/mapa/area", json={"op": "clear"}).status_code == 403
+    assert ana.post(base + "/mapa/area", json={"op": "add", "shape": "estrela", "size": 2}).status_code == 400
+    assert ana.post(base + "/mapa/area", json={"op": "add", "shape": "circle", "size": 0}).status_code == 400
+    ana.post(base + "/mapa/area", json={"op": "remove", "id": area["id"]})
+    assert mestre.get(base + "/mapa").get_json()["areas"] == []
+
+    mestre.post(base + "/mapa/area", json={"op": "add", "shape": "circle", "ox": 1, "oy": 1, "size": 2})
+    ana.post(base + "/mapa/area", json={"op": "add", "shape": "line", "ox": 1, "oy": 1, "size": 3})
+    assert mestre.post(base + "/mapa/area", json={"op": "clear"}).get_json()["areas"] == []
+
+
+def test_marcadores_comecam_escondidos_e_o_mestre_revela(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    state = mestre.post(base + "/mapa/marcador", json={"op": "add", "type": "armadilha", "x": 3, "y": 4,
+                                                       "label": "fosso"}).get_json()
+    marker = state["markers"][0]
+    assert marker["hidden"] is True and marker["icon"] == "⚠️"
+
+    body = ana.get(base + "/mapa").get_data(as_text=True)
+    assert "fosso" not in body and marker["id"] not in body
+
+    mestre.post(base + "/mapa/marcador", json={"op": "update", "id": marker["id"], "hidden": False})
+    visto = ana.get(base + "/mapa").get_json()["markers"]
+    assert [(m["label"], m["x"], m["y"]) for m in visto] == [("fosso", 3, 4)]
+    assert "hidden" not in visto[0]
+
+    # Debaixo da névoa, some de novo para o jogador.
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    assert ana.get(base + "/mapa").get_json()["markers"] == []
+    mestre.post(base + "/mapa/nevoa", json={"cells": [[3, 4]], "reveal": True})
+    assert len(ana.get(base + "/mapa").get_json()["markers"]) == 1
+
+    assert ana.post(base + "/mapa/marcador", json={"op": "add", "type": "porta", "x": 0, "y": 0}).status_code == 403
+    assert mestre.post(base + "/mapa/marcador", json={"op": "add", "type": "bomba", "x": 0, "y": 0}).status_code == 400
+    mestre.post(base + "/mapa/marcador", json={"op": "update", "id": marker["id"], "x": 5, "y": 5})
+    mestre.post(base + "/mapa/marcador", json={"op": "remove", "id": marker["id"]})
+    assert mestre.get(base + "/mapa").get_json()["markers"] == []
+
+
+def _png(width, height, color):
+    import io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), color).save(buffer, "PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
+    import io
+    from PIL import Image
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post("/campanhas/%d/mapas" % camp, data={
+        "title": "Cripta", "visibility": "mestre", "file": (_png(200, 100, (250, 250, 250)), "c.png")},
+        content_type="multipart/form-data")
+    with app.app_context():
+        asset = Asset.query.filter_by(title="Cripta").one()
+        asset_id, original = asset.id, asset.url
+    mestre.post(base + "/mapa/configurar", json={"map_id": asset_id, "cols": 2, "rows": 1, "fog": True})
+    mestre.post(base + "/mapa/nevoa", json={"cells": [[0, 0]], "reveal": True})
+
+    visto = ana.get(base + "/mapa").get_json()
+    assert visto["map_url"] != original and "/mapa/imagem" in visto["map_url"]
+    assert mestre.get(base + "/mapa").get_json()["map_url"] == original
+
+    # O original não abre para o jogador enquanto houver névoa.
+    assert ana.get(original).status_code == 404
+
+    response = ana.get(visto["map_url"])
+    assert response.status_code == 200 and response.mimetype == "image/jpeg"
+    image = Image.open(io.BytesIO(response.data)).convert("RGB")
+    response.close()
+    left, right = image.getpixel((50, 50)), image.getpixel((150, 50))
+    assert min(left) > 200          # revelado: a imagem de verdade
+    assert max(right) < 30          # não revelado: preto
+
+    # Revelar mais muda a URL (o navegador não fica com a versão velha).
+    mestre.post(base + "/mapa/nevoa", json={"all": True, "reveal": True})
+    assert ana.get(base + "/mapa").get_json()["map_url"] != visto["map_url"]
+
+    # Sem névoa, volta a ser o original.
+    mestre.post(base + "/mapa/configurar", json={"fog": False})
+    assert ana.get(base + "/mapa").get_json()["map_url"] == original
+    ok = ana.get(original)
+    assert ok.status_code == 200
+    ok.close()
+    assert mesa.user("intruso").get(visto["map_url"]).status_code == 403

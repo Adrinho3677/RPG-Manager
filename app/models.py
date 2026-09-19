@@ -117,6 +117,12 @@ class Campaign(db.Model):
     invite_code = db.Column(db.String(12), unique=True, index=True)
     status = db.Column(db.String(24), default="ativa")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # "Mostrar para a mesa": o último handout que o mestre abriu na tela de todos.
+    spotlight = db.Column(JSONField, nullable=True)
+    # Tesouro do grupo (itens, moedas e registro) — separado das fichas.
+    treasure = db.Column(JSONField, nullable=True)
+    # Calendário do mundo: meses, dias da semana, era e a data de "hoje" no jogo.
+    calendar = db.Column(JSONField, nullable=True)
 
     system = db.relationship("GameSystem", back_populates="campaigns")
     master = db.relationship("User", foreign_keys=[master_id])
@@ -143,6 +149,10 @@ class Campaign(db.Model):
     )
     assets = db.relationship(
         "Asset", back_populates="campaign", cascade="all, delete-orphan", lazy="dynamic"
+    )
+    clocks = db.relationship(
+        "Clock", back_populates="campaign", cascade="all, delete-orphan", lazy="dynamic",
+        order_by="Clock.position, Clock.id",
     )
 
     @staticmethod
@@ -201,6 +211,9 @@ class Character(db.Model):
     campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"), nullable=True)
     system_id = db.Column(db.Integer, db.ForeignKey("game_systems.id"), nullable=False)
     visible_to_players = db.Column(db.Boolean, default=True)
+    # Ficha vinda de uma campanha importada: nome de usuário do dono original,
+    # até o mestre entregá-la a alguém da mesa.
+    imported_owner = db.Column(db.String(64), nullable=True)
     data = db.Column(JSONField, default=dict)
     # Sobe a cada gravação. Quem salva com uma versão velha está editando por
     # cima de uma mudança que não viu — ver blueprints/characters.py.
@@ -251,6 +264,7 @@ class GameSession(db.Model):
     plan = db.Column(db.Text, default="")
     recap = db.Column(db.Text, default="")
     beats = db.Column(JSONField, default=list)
+    world_day = db.Column(db.Integer, nullable=True)  # data no calendário do mundo
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     campaign = db.relationship("Campaign", back_populates="sessions")
@@ -355,10 +369,37 @@ class TimelineEntry(db.Model):
     label = db.Column(db.String(120), default="")
     title = db.Column(db.String(200), nullable=False)
     body = db.Column(db.Text, default="")
+    world_day = db.Column(db.Integer, nullable=True)  # data no calendário do mundo
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     campaign = db.relationship("Campaign", back_populates="timeline")
     author = db.relationship("User")
+
+
+class Clock(db.Model):
+    """Relógio de progresso: "o ritual se completa em 6 segmentos"."""
+
+    __tablename__ = "clocks"
+
+    VISIBILITY = ("mesa", "mestre")
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    title = db.Column(db.String(120), nullable=False)
+    segments = db.Column(db.Integer, nullable=False, default=6)
+    filled = db.Column(db.Integer, nullable=False, default=0)
+    color = db.Column(db.String(9), default="#f0a94b")
+    visibility = db.Column(db.String(12), default="mesa")
+    position = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    campaign = db.relationship("Campaign", back_populates="clocks")
+
+    def as_dict(self):
+        return {"id": self.id, "title": self.title, "segments": self.segments,
+                "filled": self.filled, "color": self.color, "visibility": self.visibility}
 
 
 class NoteRecipient(db.Model):

@@ -3,14 +3,16 @@ import copy
 import secrets
 from datetime import date, datetime
 
-from flask import (Blueprint, abort, flash, jsonify, redirect, render_template,
+from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
                    request, send_file, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy import and_, or_
 
 from app import board as board_helper
+from app import initiative as initiative_helper
 from app import dice
 from app import security
+from app import worldcal
 from app import sheet as sheet_helper
 from app.blueprints.uploads import remove_file
 from app.extensions import db
@@ -294,7 +296,54 @@ def members(campaign_id):
         is_master=campaign.is_master(current_user),
         roster=roster,
         chars=chars,
+        imported=(campaign.characters.filter(Character.imported_owner.isnot(None))
+                  .order_by(Character.name).all()),
     )
+
+
+@bp.route("/importar", methods=["GET", "POST"])
+@login_required
+def import_campaign():
+    """Recria uma campanha a partir do ZIP de "Exportar campanha"."""
+    from app import importer
+    if request.method == "POST":
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            flash("Escolha o arquivo .zip exportado.", "error")
+            return render_template("campaigns/import.html"), 400
+        try:
+            campaign = importer.import_zip(importer.read_upload(upload), current_user)
+        except importer.ImportError_ as error:
+            flash(str(error), "error")
+            return render_template("campaigns/import.html"), 400
+        except Exception:
+            current_app.logger.exception("Falha ao importar campanha")
+            flash("Não consegui ler esse arquivo: os dados dentro dele estão num formato inesperado.",
+                  "error")
+            return render_template("campaigns/import.html"), 400
+        pending = campaign.characters.filter(Character.imported_owner.isnot(None)).count()
+        flash("Campanha importada!" + (" %d ficha(s) aguardam ser entregues aos donos — veja em Mesa."
+                                       % pending if pending else ""), "success")
+        return redirect(url_for("campaigns.overview", campaign_id=campaign.id))
+    return render_template("campaigns/import.html")
+
+
+@bp.route("/<int:campaign_id>/fichas/<int:character_id>/entregar", methods=["POST"])
+@login_required
+def hand_over(campaign_id, character_id):
+    """Mestre passa uma ficha para alguém da mesa (ex.: fichas importadas)."""
+    campaign = get_campaign(campaign_id, master_only=True)
+    character = Character.query.filter_by(id=character_id, campaign_id=campaign.id).first_or_404()
+    member = CampaignMember.query.filter_by(campaign_id=campaign.id,
+                                            user_id=to_int(request.form.get("user_id"), 0)).first()
+    if member is None:
+        flash("Escolha alguém que já está na mesa.", "error")
+    else:
+        character.owner_id = member.user_id
+        character.imported_owner = None
+        db.session.commit()
+        flash("“%s” agora é de %s." % (character.name, member.user.username), "success")
+    return redirect(url_for("campaigns.members", campaign_id=campaign.id))
 
 
 @bp.route("/<int:campaign_id>/mesa/<int:member_id>/remover", methods=["POST"])
@@ -387,6 +436,12 @@ def session_detail(campaign_id, session_id):
         item.number = to_int(request.form.get("number"), item.number)
         item.scheduled_for = parse_date(request.form.get("scheduled_for"))
         item.start_time = parse_time(request.form.get("start_time"))
+        try:
+            item.world_day = worldcal.date_from_form(worldcal.normalize(campaign.calendar), request.form)
+        except worldcal.CalendarError as error:
+            flash("Data no mundo: %s" % error, "error")
+            return redirect(url_for("campaigns.session_detail", campaign_id=campaign.id,
+                                    session_id=item.id))
         status = request.form.get("status")
         if status in dict(SESSION_STATUS):
             item.status = status
@@ -886,13 +941,17 @@ def encounter_save(campaign_id, encounter_id):
     valid_sheets = {ch.id: ch for ch in campaign.characters.all()}
     messages = []
     combatants = []
-    for item in payload.get("combatants") or []:
+    for number, item in enumerate(payload.get("combatants") or [], start=1):
+        if not isinstance(item, dict):
+            continue
         name = (item.get("name") or "").strip()
         character_id = to_int(item.get("character_id"), 0) or None
         if character_id not in valid_sheets:
             character_id = None
         if not name and not character_id:
-            continue
+            # Linha avulsa sem nome: antes sumia ao salvar e bagunçava de quem
+            # era a vez. Agora ganha um nome provisório.
+            name = "Combatente %d" % number
         combatants.append({
             "uid": (str(item.get("uid") or "")[:16]) or new_uid(),
             "name": (name or valid_sheets[character_id].name)[:80],
@@ -966,6 +1025,68 @@ def encounter_save(campaign_id, encounter_id):
     if "name" in payload:
         encounter.name = (payload.get("name") or encounter.name).strip()[:160]
     db.session.commit()
+    return jsonify(encounter_state(encounter, True, messages))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/iniciativa", methods=["POST"])
+@login_required
+def encounter_initiative(campaign_id, encounter_id):
+    """Rola a iniciativa de quem tem ficha, pela regra do sistema.
+
+    Combatentes avulsos (sem ficha) ficam com o valor que o mestre digitou —
+    ele continua podendo corrigir qualquer número à mão depois. Criaturas usam
+    a ficha do bestiário de onde vieram.
+    """
+    campaign = get_campaign(campaign_id, master_only=True)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    scope = payload.get("scope") if payload.get("scope") in ("todos", "grupo", "inimigos") else "todos"
+    combatants = copy.deepcopy(encounter.combatants or [])
+    ids = {i for c in combatants for i in (c.get("character_id"), c.get("source_id")) if i}
+    sheets = {ch.id: ch for ch in Character.query.filter(
+        Character.id.in_(ids), Character.campaign_id == campaign.id)} if ids else {}
+
+    rolled, public, secret, manual = {}, [], [], []
+    for c in combatants:
+        sheet = sheets.get(c.get("character_id")) or sheets.get(c.get("source_id"))
+        kind = sheet.kind if sheet is not None and c.get("character_id") else c.get("kind")
+        if scope == "grupo" and kind != "pj" or scope == "inimigos" and kind == "pj":
+            continue
+        if sheet is None:
+            manual.append(c.get("name") or "?")
+            continue
+        outcome = initiative_helper.roll_for(sheet, campaign.system)
+        c["init"] = outcome["result"]
+        rolled[c["uid"]] = (outcome["result"], outcome["tiebreak"], secrets.randbelow(1000))
+        line = "%s %d" % (c.get("name") or sheet.name, outcome["result"])
+        (public if kind == "pj" else secret).append(line)
+
+    if not rolled:
+        return jsonify(encounter_state(encounter, True, [
+            "Ninguém com ficha para rolar." + (" Sem ficha: %s — digite à mão." % ", ".join(manual)
+                                                if manual else "")]))
+
+    # Empate: maior bônus primeiro; persistindo, sorteio. Quem não rolou mantém
+    # o número que tinha e entra na ordem por ele.
+    def order(c):
+        init, tiebreak, lot = rolled.get(c["uid"], (to_int(c.get("init"), 0), -999, 0))
+        return (init, tiebreak, lot)
+    active = combatants[encounter.turn_index or 0]["uid"] if combatants else None
+    combatants.sort(key=order, reverse=True)
+    encounter.combatants = combatants
+    encounter.turn_index = 0 if scope == "todos" else next(
+        (i for i, c in enumerate(combatants) if c["uid"] == active), 0)
+
+    for lines, is_secret in ((public, False), (secret, True)):
+        if lines:
+            db.session.add(RollLog(
+                campaign_id=campaign.id, user_id=current_user.id, label="Iniciativa",
+                result=str(len(lines)), detail=" · ".join(lines)[:400], flag="",
+                secret=is_secret))
+    db.session.commit()
+    messages = ["Iniciativa rolada: " + ", ".join(public + secret) + "."]
+    if manual:
+        messages.append("Sem ficha (mantidos como estavam): %s." % ", ".join(manual))
     return jsonify(encounter_state(encounter, True, messages))
 
 
@@ -1060,6 +1181,55 @@ def board_hide(campaign_id, encounter_id):
                         lambda b: board_helper.set_hidden(b, uid, payload.get("hidden")))
 
 
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/area", methods=["POST"])
+@login_required
+def board_area(campaign_id, encounter_id):
+    """Áreas de efeito: qualquer um da mesa põe; tira quem pôs ou o mestre."""
+    campaign = get_campaign(campaign_id)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    is_master = campaign.is_master(current_user)
+    op = payload.get("op")
+    if op == "add":
+        change = lambda b: board_helper.add_area(b, payload, current_user)
+    elif op == "remove":
+        change = lambda b: board_helper.remove_area(b, str(payload.get("id")), current_user, is_master)
+    elif op == "clear" and is_master:
+        change = board_helper.clear_areas
+    else:
+        abort(403 if op == "clear" else 400)
+    return board_change(campaign, encounter, change)
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/marcador", methods=["POST"])
+@login_required
+def board_marker(campaign_id, encounter_id):
+    campaign = get_campaign(campaign_id, master_only=True)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    return board_change(campaign, encounter, lambda b: board_helper.change_marker(b, payload))
+
+
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/imagem")
+@login_required
+def board_image(campaign_id, encounter_id):
+    """A imagem do mapa com a névoa já aplicada (o que o jogador recebe)."""
+    campaign = get_campaign(campaign_id)
+    encounter = get_encounter(campaign, encounter_id)
+    board = board_helper.normalize(encounter.board)
+    asset = Asset.query.filter_by(id=board["map_id"], campaign_id=campaign.id, kind="mapa").first()
+    if asset is None:
+        abort(404)
+    from app import fogimage
+    try:
+        path = fogimage.masked_path(asset, board, board_helper.fog_key(board))
+    except (OSError, ValueError):
+        abort(404)
+    response = send_file(path, mimetype="image/jpeg", max_age=3600)
+    response.headers["Cache-Control"] = "private, max-age=3600"
+    return response
+
+
 @bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/nevoa", methods=["POST"])
 @login_required
 def board_fog(campaign_id, encounter_id):
@@ -1080,9 +1250,11 @@ def board_fog(campaign_id, encounter_id):
 def roll_feed(campaign_id):
     """Rolagens novas desde a última que a tela já mostrou."""
     campaign = get_campaign(campaign_id)
-    is_master = campaign.is_master(current_user)
     since = to_int(request.args.get("desde"), 0)
+    return jsonify(dict(ok=True, **recent_rolls(campaign, campaign.is_master(current_user), since)))
 
+
+def recent_rolls(campaign, is_master, since):
     query = campaign.rolls
     if not is_master:
         query = query.filter(or_(RollLog.secret.is_(False), RollLog.user_id == current_user.id))
@@ -1090,11 +1262,7 @@ def roll_feed(campaign_id):
         rolls = query.filter(RollLog.id > since).order_by(RollLog.id.asc()).limit(50).all()
     else:
         rolls = list(reversed(query.order_by(RollLog.id.desc()).limit(25).all()))
-    return jsonify({
-        "ok": True,
-        "rolls": [r.as_dict() for r in rolls],
-        "last": rolls[-1].id if rolls else since,
-    })
+    return {"rolls": [r.as_dict() for r in rolls], "last": rolls[-1].id if rolls else since}
 
 
 @bp.route("/<int:campaign_id>/rolar", methods=["POST"])
@@ -1128,6 +1296,11 @@ def timeline(campaign_id):
     campaign = get_campaign(campaign_id)
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
+        try:
+            world_day = worldcal.date_from_form(worldcal.normalize(campaign.calendar), request.form)
+        except worldcal.CalendarError as error:
+            flash("Data no mundo: %s" % error, "error")
+            return redirect(url_for("campaigns.timeline", campaign_id=campaign.id))
         if not title:
             flash("Dê um título ao acontecimento.", "error")
         else:
@@ -1138,6 +1311,7 @@ def timeline(campaign_id):
                     label=(request.form.get("label") or "").strip()[:120],
                     title=title[:200],
                     body=(request.form.get("body") or "").strip(),
+                    world_day=world_day,
                 )
             )
             db.session.commit()
@@ -1145,6 +1319,9 @@ def timeline(campaign_id):
         return redirect(url_for("campaigns.timeline", campaign_id=campaign.id))
 
     entries = campaign.timeline.order_by(TimelineEntry.created_at.desc()).all()
+    # Com data no mundo, a ordem é a da história (mais recente no jogo em cima);
+    # sem data, a ordem em que foram registrados.
+    entries.sort(key=lambda e: (e.world_day is None, -(e.world_day or 0)))
     return render_template(
         "campaigns/timeline.html",
         campaign=campaign,

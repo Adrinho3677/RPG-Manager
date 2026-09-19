@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Tesouro · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+<div data-treasure data-url="{{ url_for('table.treasure_change', campaign_id=campaign.id) }}">
+  <p class="muted small treasure-intro">
+    O baú do grupo, separado das fichas: nada aqui mexe no inventário nem nas moedas de ninguém.
+    Quando alguém recebe a parte dele, anota na própria ficha. Toda movimentação fica registrada.
+    <span class="save-state" data-treasure-status></span>
+  </p>
+
+  <div class="split">
+    <div>
+      <div class="card">
+        <div class="card-head"><h2>💰 Moedas</h2></div>
+        <div class="coin-grid" data-coins></div>
+        <form class="treasure-move" data-coin-form>
+          <p class="hint">Some (ou tire, com número negativo) do tesouro:</p>
+          <div class="coin-inputs" data-coin-inputs></div>
+          <div class="field-row">
+            <div class="field" style="margin:0"><input type="text" name="reason" maxlength="120"
+                 placeholder="Motivo (ex.: saque do covil)" aria-label="Motivo"></div>
+            <div class="field" style="margin:0"><button class="btn btn-gold btn-block" type="submit">Registrar</button></div>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>⚖️ Dividir moedas</h2></div>
+        <div data-split-people class="split-people"></div>
+        <div data-split-preview class="split-preview muted small"></div>
+        <button class="btn btn-primary btn-sm" type="button" data-split>Dividir entre os marcados</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <h2>🎒 Itens</h2>
+          <span class="muted small" data-weight></span>
+        </div>
+        <div data-items></div>
+        <form class="treasure-add" data-item-form>
+          <input type="text" name="name" placeholder="Item" maxlength="120" required aria-label="Nome do item">
+          <input type="number" name="qty" value="1" min="1" aria-label="Quantidade" title="Quantidade">
+          <input type="text" inputmode="decimal" name="weight" placeholder="Peso" aria-label="Peso de cada">
+          <input type="text" name="value" placeholder="Valor" maxlength="60" aria-label="Valor">
+          <button class="btn btn-gold btn-sm" type="submit">Guardar</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Registro</h3></div>
+        <div class="treasure-log" data-log></div>
+      </div>
+    </div>
+  </div>
+  <script type="application/json" data-treasure-payload>{{ payload|tojson }}</script>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/treasure.js') }}"></script>
+{% endblock %}

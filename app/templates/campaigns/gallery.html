@@ -47,6 +47,13 @@
             <span class="actions">
               {% if asset.visibility == 'mestre' %}<span class="tag tag-danger">só mestre</span>{% endif %}
               {% if is_master %}
+                <form method="post" action="{{ url_for('table.spotlight', campaign_id=campaign.id) }}"
+                      {% if asset.visibility == 'mestre' %}data-confirm="Isto revela a imagem para a mesa toda e abre na tela de todos. Continuar?"{% endif %}>
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="kind" value="mapa">
+                  <input type="hidden" name="id" value="{{ asset.id }}">
+                  <button class="btn btn-gold btn-sm" type="submit" title="Abre a imagem na tela de todos da mesa agora">📣 Mostrar</button>
+                </form>
                 <form method="post" action="{{ url_for('uploads.gallery_toggle', campaign_id=campaign.id, asset_id=asset.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-sm {{ 'btn-gold' if asset.visibility == 'mestre' else 'btn-ghost' }}" type="submit">
@@ -56,7 +63,7 @@
               {% endif %}
               {% if is_master or asset.owner_id == current_user.id %}
                 <form method="post" action="{{ url_for('uploads.gallery_delete', campaign_id=campaign.id, asset_id=asset.id) }}"
-                      onsubmit="return confirm('Excluir esta imagem?')">
+                      data-confirm="Excluir esta imagem?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-danger btn-sm btn-icon" type="submit" title="Excluir">✕</button>
                 </form>

@@ -24,6 +24,7 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     JSON_AS_ASCII = False
     MAX_CONTENT_LENGTH = 4 * 1024 * 1024
+    IMPORT_MAX_BYTES = 40 * 1024 * 1024  # só a importação de campanha aceita arquivo maior
 
     # Migrações rodam sozinhas ao iniciar o app, para não precisar abrir um
     # console depois de cada atualização. Desligue com AUTO_MIGRATE=0 se for
@@ -56,3 +57,13 @@ class Config:
     # isso todos os visitantes teriam o IP do proxy — e o bloqueio de login por
     # IP travaria o site inteiro. Liga sozinho no PythonAnywhere.
     BEHIND_PROXY = _flag("BEHIND_PROXY", bool(os.environ.get("PYTHONANYWHERE_DOMAIN")))
+
+    # E-mail para recuperar senha (ver app/mail.py). Sem MAIL_SERVER, desligado.
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
+    MAIL_PORT = int(os.environ.get("MAIL_PORT", "587") or 587)
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+    MAIL_FROM = os.environ.get("MAIL_FROM", "")
+    # Endereço público do site, usado nos links dos e-mails. Sem ele, usa o
+    # endereço da própria requisição.
+    SITE_URL = os.environ.get("SITE_URL", "").rstrip("/")

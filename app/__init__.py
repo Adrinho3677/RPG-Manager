@@ -14,6 +14,7 @@ INITIAL_REVISION = "0001_inicial"
 
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=False)
+    app.request_class = GrimorioRequest
     app.config.from_object(config_class)
     check_secret_key(app)
 
@@ -48,6 +49,8 @@ def create_app(config_class=Config):
     from app.blueprints.campaigns import bp as campaigns_bp
     from app.blueprints.characters import bp as characters_bp
     from app.blueprints.uploads import bp as uploads_bp
+    from app.blueprints.live import bp as live_bp
+    from app.blueprints.table import bp as table_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -55,6 +58,8 @@ def create_app(config_class=Config):
     app.register_blueprint(campaigns_bp)
     app.register_blueprint(characters_bp)
     app.register_blueprint(uploads_bp)
+    app.register_blueprint(live_bp)
+    app.register_blueprint(table_bp)
 
     register_filters(app)
     register_errors(app)
@@ -71,6 +76,20 @@ def create_app(config_class=Config):
             sync_presets(db, models.GameSystem)
 
     return app
+
+
+class GrimorioRequest(Flask.request_class):
+    """Limite de upload maior só onde precisa: importar uma campanha (ZIP com
+    todos os mapas). No resto do site continua o MAX_CONTENT_LENGTH normal."""
+
+    BIG_UPLOADS = ("campaigns.import_campaign",)
+
+    @property
+    def max_content_length(self):
+        from flask import current_app
+        if self.url_rule is not None and self.endpoint in self.BIG_UPLOADS:
+            return current_app.config.get("IMPORT_MAX_BYTES")
+        return current_app.config.get("MAX_CONTENT_LENGTH")
 
 
 def _has_table(name):
@@ -185,7 +204,9 @@ def register_errors(app):
 
     @app.errorhandler(413)
     def too_large(error):
-        message = "Arquivo grande demais. O limite é de 4 MB."
+        limit = (app.config.get("IMPORT_MAX_BYTES")
+                 if request.endpoint in GrimorioRequest.BIG_UPLOADS else app.config.get("MAX_CONTENT_LENGTH"))
+        message = "Arquivo grande demais. O limite é de %d MB." % ((limit or 0) // (1024 * 1024))
         if wants_json():
             return jsonify({"ok": False, "error": "too_large", "message": message}), 413
         return render_template("errors/error.html", code=413, message=message), 413

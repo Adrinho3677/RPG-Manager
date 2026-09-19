@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Nova senha · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card">
+    <h1>Nova senha</h1>
+    <p class="muted">Conta: <strong>{{ user.username }}</strong></p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="password">Senha nova</label>
+        <input type="password" id="password" name="password" minlength="6" autocomplete="new-password" required autofocus>
+      </div>
+      <div class="field">
+        <label for="confirm">Repita a senha nova</label>
+        <input type="password" id="confirm" name="confirm" minlength="6" autocomplete="new-password" required>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Salvar a senha</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -22,6 +22,7 @@ from app.models import Asset, Character, Encounter, GameSession, Note, RollLog, 
 from app.utils import local_time
 
 FORMAT = "grimorio-campanha"
+VERSION = 2  # 2: ids internos (para religar combates e mapas), relógios, tesouro, calendário
 MAX_ROLLS = 1000
 
 README = """Exportação do Grimório
@@ -65,10 +66,11 @@ def build_document(campaign):
     for ch in campaign.characters.order_by(Character.kind, Character.name).all():
         avatar = asset_from_url(ch.avatar_url)
         characters.append({
+            "id": ch.id,
             "nome": ch.name,
             "tipo": ch.kind,
             "conceito": ch.concept,
-            "dono": ch.owner.username,
+            "dono": ch.imported_owner or ch.owner.username,
             "visivel_para_jogadores": bool(ch.visible_to_players),
             "retrato": (_asset_file(avatar, images) if avatar else ch.avatar_url) or None,
             "versao": ch.version,
@@ -84,6 +86,7 @@ def build_document(campaign):
             "data": item.scheduled_for.isoformat() if item.scheduled_for else None,
             "horario": item.start_time,
             "situacao": item.status,
+            "data_no_mundo": item.world_day,
             "sinopse": item.synopsis,
             "roteiro_do_mestre": item.plan,
             "resumo": item.recap,
@@ -110,6 +113,7 @@ def build_document(campaign):
     maps = []
     for asset in campaign.assets.filter(Asset.kind == "mapa").order_by(Asset.created_at).all():
         maps.append({
+            "id": asset.id,
             "titulo": asset.title,
             "arquivo": _asset_file(asset, images),
             "visibilidade": asset.visibility,
@@ -121,7 +125,7 @@ def build_document(campaign):
 
     document = {
         "formato": FORMAT,
-        "versao": 1,
+        "versao": VERSION,
         "exportado": _stamp(datetime.utcnow()),
         "campanha": {
             "nome": campaign.name,
@@ -140,10 +144,14 @@ def build_document(campaign):
         "combates": [{"nome": e.name, "rodada": e.round_number, "combatentes": e.combatants or [],
                       "mapa_tatico": e.board}
                      for e in campaign.encounters.order_by(Encounter.created_at).all()],
-        "linha_do_tempo": [{"quando_no_jogo": t.label, "titulo": t.title, "texto": t.body,
+        "linha_do_tempo": [{"quando_no_jogo": t.label, "data_no_mundo": t.world_day,
+                            "titulo": t.title, "texto": t.body,
                             "autor": t.author.username, "registrado": _stamp(t.created_at)}
                            for t in campaign.timeline.order_by(TimelineEntry.created_at).all()],
         "mapas": maps,
+        "relogios": [c.as_dict() for c in campaign.clocks.all()],
+        "tesouro": campaign.treasure,
+        "calendario": campaign.calendar,
         "rolagens": [dict(r.as_dict(), quando=_stamp(r.created_at)) for r in reversed(rolls)],
     }
     return document, images

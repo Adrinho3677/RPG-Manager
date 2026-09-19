@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+import hashlib
+import hmac
+
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from flask_login import current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from app import mail
 from app import security
 from app.extensions import db
 from app.models import User
@@ -95,6 +100,98 @@ def register():
         return redirect(destination)
 
     return render_template("auth/register.html")
+
+
+# ------------------------------------------------------ recuperar a senha
+RESET_MAX_AGE = 3600  # o link vale 1 hora
+RESET_SALT = "redefinir-senha"
+
+
+def _reset_serializer():
+    return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt=RESET_SALT)
+
+
+def _password_fingerprint(user):
+    """Muda quando a senha muda: o link só funciona uma vez."""
+    return hashlib.sha256(user.password_hash.encode("utf-8")).hexdigest()[:16]
+
+
+def reset_token(user):
+    return _reset_serializer().dumps({"u": user.id, "h": _password_fingerprint(user)})
+
+
+def user_from_token(token):
+    try:
+        data = _reset_serializer().loads(token, max_age=RESET_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    user = db.session.get(User, data.get("u")) if isinstance(data, dict) else None
+    if user is None or not hmac.compare_digest(_password_fingerprint(user), str(data.get("h"))):
+        return None
+    return user
+
+
+@bp.route("/esqueci-senha", methods=["GET", "POST"])
+def forgot():
+    """Pede o link por e-mail. A resposta é sempre a mesma, exista a conta ou não."""
+    if current_user.is_authenticated:
+        return redirect(url_for("auth.account"))
+    if request.method == "POST" and mail.enabled():
+        email = (request.form.get("email") or "").strip().lower()
+        ip = security.client_ip()
+        key, ip_key = "reset:" + email[:150], "reset:" + ip
+        wait = security.seconds_blocked(key, ip_key, max_account=3, max_ip=10)
+        if wait:
+            security.log_block("recuperação de senha", email, ip)
+            flash(security.wait_message(wait), "error")
+            return render_template("auth/forgot.html", mail_enabled=True), 429
+        security.record_attempt(key, ip_key, success=False)  # conta para o limite
+        user = User.query.filter_by(email=email).first() if valid_email(email) else None
+        if user is not None:
+            base = current_app.config.get("SITE_URL") or request.host_url.rstrip("/")
+            link = base + url_for("auth.reset", token=reset_token(user))
+            mail.send(user.email, "Grimório: redefinir sua senha", RESET_EMAIL % {
+                "user": user.username, "link": link, "minutes": RESET_MAX_AGE // 60})
+        flash("Se houver uma conta com esse e-mail, mandamos um link para criar uma senha nova. "
+              "Confira também a caixa de spam.", "success")
+        return redirect(url_for("auth.login"))
+    return render_template("auth/forgot.html", mail_enabled=mail.enabled())
+
+
+@bp.route("/redefinir-senha/<token>", methods=["GET", "POST"])
+def reset(token):
+    user = user_from_token(token)
+    if user is None:
+        flash("Este link não vale mais (passou de 1 hora ou já foi usado). Peça outro.", "error")
+        return redirect(url_for("auth.forgot"))
+    if request.method == "POST":
+        new = request.form.get("password") or ""
+        if len(new) < 6:
+            flash("A senha nova precisa de pelo menos 6 caracteres.", "error")
+        elif new != (request.form.get("confirm") or ""):
+            flash("As senhas não conferem.", "error")
+        else:
+            user.set_password(new)
+            db.session.commit()
+            # Sucesso limpa as tentativas erradas desta conta: quem estava
+            # bloqueado por errar a senha consegue entrar agora.
+            security.record_attempt(user.username.lower(), security.client_ip(), success=True)
+            security.record_attempt(user.email, security.client_ip(), success=True)
+            flash("Senha trocada. Entre com a senha nova.", "success")
+            return redirect(url_for("auth.login"))
+    return render_template("auth/reset.html", user=user)
+
+
+RESET_EMAIL = """Olá, %(user)s!
+
+Alguém (provavelmente você) pediu para redefinir a senha da sua conta no Grimório.
+Para criar uma senha nova, abra este link:
+
+%(link)s
+
+O link vale %(minutes)d minutos e funciona uma vez só. Se não foi você, é só ignorar
+este e-mail: sua senha continua a mesma.
+"""
 
 
 @bp.route("/conta", methods=["GET", "POST"])

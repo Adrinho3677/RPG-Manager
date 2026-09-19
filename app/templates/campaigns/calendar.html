@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Calendário · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+
+{% macro setup_form(current) %}
+  <form method="post" class="calendar-setup">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="setup">
+    <div class="field-row">
+      <div class="field">
+        <label for="preset">Modelo</label>
+        <select id="preset" name="preset" data-calendar-preset>
+          {% for key, preset in presets.items() %}
+            <option value="{{ key }}">{{ preset.label }}</option>
+          {% endfor %}
+          <option value="personalizado" {% if current %}selected{% endif %}>Personalizado (meus meses)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="era">Era <span class="muted small">(depois do ano)</span></label>
+        <input type="text" id="era" name="era" maxlength="20" placeholder="Ex.: DR" value="{{ current.era if current else '' }}">
+      </div>
+      <div class="field">
+        <label for="year">Ano de hoje no mundo</label>
+        <input type="number" id="year" name="year" min="1" placeholder="Ex.: 1492">
+      </div>
+    </div>
+    <div class="field-row" data-calendar-custom>
+      <div class="field">
+        <label for="months">Meses — um por linha, “Nome: dias”</label>
+        <textarea id="months" name="months" style="min-height:160px"
+                  placeholder="Martelo: 30&#10;Alturiak: 30&#10;Ches: 30">{% if current %}{% for m in current.months %}{{ m.name }}: {{ m.days }}
+{% endfor %}{% endif %}</textarea>
+      </div>
+      <div class="field">
+        <label for="weekdays">Dias da semana <span class="muted small">(separados por vírgula; pode deixar vazio)</span></label>
+        <textarea id="weekdays" name="weekdays" style="min-height:160px"
+                  placeholder="Primeiro, Segundo, Terceiro…">{{ current.weekdays|join(', ') if current else '' }}</textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Salvar calendário</button>
+    <p class="hint">Sem ano bissexto. Trocar o calendário não apaga as datas já registradas, mas elas
+      passam a ser lidas pelos meses novos.</p>
+  </form>
+{% endmacro %}
+
+{% if cal is none %}
+  <div class="card">
+    <div class="card-head"><h2>📅 Calendário do mundo</h2></div>
+    {% if is_master %}
+      <p>Defina os meses do seu mundo para datar acontecimentos da linha do tempo e sessões, e marcar
+        o “hoje” da história — que você avança conforme o tempo passa no jogo.</p>
+      {{ setup_form(none) }}
+    {% else %}
+      <div class="empty"><p>O mestre ainda não configurou o calendário do mundo.</p></div>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="split calendar-split">
+    <div class="card">
+      <div class="card-head calendar-head">
+        {% if prev_month %}
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('table.calendar', campaign_id=campaign.id, ano=prev_month[0], mes=prev_month[1]) }}"
+             aria-label="Mês anterior">◀</a>
+        {% else %}<span></span>{% endif %}
+        <h2>{{ cal.months[month - 1].name }} de {{ year }}{% if cal.era %} {{ cal.era }}{% endif %}</h2>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('table.calendar', campaign_id=campaign.id, ano=next_month[0], mes=next_month[1]) }}"
+           aria-label="Próximo mês">▶</a>
+      </div>
+      <div class="calendar-scroll">
+        <table class="calendar-grid">
+          {% if cal.weekdays %}
+            <thead><tr>{% for day in cal.weekdays %}<th title="{{ day }}">{{ day[:3] }}</th>{% endfor %}</tr></thead>
+          {% endif %}
+          <tbody>
+            {% for week in grid %}
+              <tr>
+                {% for cell in week %}
+                  {% if cell %}
+                    {% set day_events = events.get(cell[1], []) %}
+                    <td class="{{ 'is-today' if cell[1] == today }} {{ 'has-events' if day_events }}">
+                      <span class="calendar-day">{{ cell[0] }}</span>
+                      {% for event in day_events %}
+                        <a class="calendar-event is-{{ event.kind }}" href="{{ event.url }}" title="{{ event.title }}">{{ event.title }}</a>
+                      {% endfor %}
+                    </td>
+                  {% else %}
+                    <td class="is-empty"></td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">🟣 acontecimentos da linha do tempo · 🟠 sessões (a data no mundo é definida em cada sessão)</p>
+    </div>
+
+    <aside>
+      <div class="card world-today">
+        <span class="muted small">📅 Hoje no mundo</span>
+        <strong>{{ today_label }}</strong>
+        {% if is_master %}
+          <form method="post" class="calendar-advance">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="advance">
+            {% set week = cal.weekdays|length or 7 %}
+            <button class="btn btn-ghost btn-sm" name="days" value="-1" type="submit">−1 dia</button>
+            <button class="btn btn-gold btn-sm" name="days" value="1" type="submit">+1 dia</button>
+            <button class="btn btn-ghost btn-sm" name="days" value="{{ week }}" type="submit">+1 semana</button>
+            <button class="btn btn-ghost btn-sm" name="days" value="{{ cal.months[month - 1].days }}" type="submit">+1 mês</button>
+          </form>
+          <form method="post" class="calendar-set">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="set">
+            {% set parts = world_parts(cal, today) %}
+            <input type="number" name="day" min="1" value="{{ parts[2] }}" aria-label="Dia">
+            <select name="month" aria-label="Mês">
+              {% for m in cal.months %}<option value="{{ loop.index }}" {% if loop.index == parts[1] %}selected{% endif %}>{{ m.name }}</option>{% endfor %}
+            </select>
+            <input type="number" name="year" min="1" value="{{ parts[0] }}" aria-label="Ano">
+            <button class="btn btn-ghost btn-sm" type="submit">Ir para a data</button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if recent %}
+        <div class="card">
+          <div class="card-head"><h3>Últimos acontecimentos</h3></div>
+          <div class="list">
+            {% for entry in recent %}
+              <a class="list-item" href="{{ url_for('campaigns.timeline', campaign_id=campaign.id) }}#t{{ entry.id }}">
+                <span><strong>{{ entry.title }}</strong><span class="meta">{{ fmt(entry.world_day) }}</span></span>
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if is_master %}
+        <details class="card">
+          <summary>⚙️ Mudar o calendário</summary>
+          {{ setup_form(cal) }}
+          <form method="post" data-confirm="Remover o calendário? As datas já registradas ficam guardadas.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="clear">
+            <button class="btn btn-danger btn-sm" type="submit" style="margin-top:.6rem">Remover calendário</button>
+          </form>
+        </details>
+      {% endif %}
+    </aside>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Meses e dias da semana só fazem sentido no modelo personalizado.
+  document.querySelectorAll("[data-calendar-preset]").forEach(function (select) {
+    var form = select.closest("form"), custom = form.querySelector("[data-calendar-custom]");
+    function sync() { custom.hidden = select.value !== "personalizado"; }
+    select.addEventListener("change", sync);
+    sync();
+  });
+</script>
+{% endblock %}

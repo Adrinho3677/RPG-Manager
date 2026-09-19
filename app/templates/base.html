@@ -8,7 +8,11 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
 </head>
-<body>
+{%- set live = live_campaign if live_campaign is defined and live_campaign
+      else (campaign if campaign is defined and campaign and campaign.invite_code is defined else none) -%}
+<body{% if live and current_user.is_authenticated and live.can_view(current_user) %}
+      data-live-url="{{ url_for('live.live', campaign_id=live.id) }}"
+      data-campaign-id="{{ live.id }}" data-user-id="{{ current_user.id }}"{% endif %}>
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="{{ url_for('main.index') }}">

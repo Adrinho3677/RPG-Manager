@@ -144,6 +144,7 @@ def detail(character_id):
     return render_template(
         "characters/sheet.html",
         character=character,
+        live_campaign=campaign,
         sheet=data,
         can_edit=can_edit,
         categories=ITEM_CATEGORIES,

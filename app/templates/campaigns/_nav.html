@@ -28,6 +28,10 @@
      class="{{ 'active' if page == 'campaigns.encounters' }}">Combate</a>
   <a href="{{ url_for('uploads.gallery', campaign_id=campaign.id) }}"
      class="{{ 'active' if page == 'uploads.gallery' }}">Mapas</a>
+  <a href="{{ url_for('table.treasure', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'table.treasure' }}">Tesouro</a>
+  <a href="{{ url_for('table.calendar', campaign_id=campaign.id) }}"
+     class="{{ 'active' if page == 'table.calendar' }}">Calendário</a>
   <a href="{{ url_for('campaigns.timeline', campaign_id=campaign.id) }}"
      class="{{ 'active' if page == 'campaigns.timeline' }}">Linha do tempo</a>
   <a href="{{ url_for('campaigns.members', campaign_id=campaign.id) }}"

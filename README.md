@@ -75,26 +75,66 @@ pode fazer **rolagens secretas**.
 - **Combate**: PJs e NPCs entram **ligados à ficha** — dano no rastreador vai para o PV deles.
   Condições com duração perdem uma rodada por rodada e somem quando acabam. Jogadores
   acompanham ao vivo, mas **não recebem o PV dos inimigos**, só "ileso / ferido / grave".
+  - **"Próximo turno"** passa a vez (o cabeçalho mostra *Vez de…*); ao voltar ao primeiro da
+    ordem, a rodada sobe e as condições descontam.
+  - **🎲 Rolar iniciativa** de todos (ou só do grupo, ou só dos inimigos) pela regra do
+    sistema — Ordem: [AGI]d20 pegando o maior + Iniciativa; D&D: 1d20 + Des; Cthulhu: ordem de
+    DES, sem dado; Vampiro: DES + RAC. Configurável no editor de sistemas. Os números continuam
+    editáveis à mão; combatentes sem ficha ficam com o que o mestre digitou. O resultado dos
+    PJs vai para o registro da mesa; o dos inimigos, numa rolagem secreta.
 - **Mapa tático** em cada combate: a imagem do mapa com grade por cima e as fichas do
   rastreador como peças. Arraste (ou toque na ficha e depois no quadrado — melhor no celular);
   enquanto arrasta, mostra a distância ("5 quadrados (7,5 m)"). Todos veem os movimentos ao
   vivo. O mestre:
   - ajusta a grade à imagem, a escala do quadrado e se jogadores movem as próprias fichas;
   - **esconde fichas** — some para os jogadores no mapa *e* na ordem de iniciativa;
-  - pinta a **névoa de guerra** ("Revelar" / "Cobrir"): inimigos debaixo dela não chegam ao
-    navegador dos jogadores. O grupo aparece sempre.
+  - pinta a **névoa de guerra** ("Revelar" / "Cobrir"). A névoa é **de verdade**: o servidor
+    recorta a imagem e o jogador recebe só uma cópia com o que não foi revelado coberto de
+    preto — nem abrindo o arquivo da imagem ele vê o resto. Inimigos e marcadores debaixo dela
+    também não chegam ao navegador. O grupo aparece sempre. (Deixe o mapa *escondido* na
+    galeria: se ele estiver visível lá, o jogador abre o original pela galeria — a tela avisa.)
+  - põe **marcadores** — 🚪 porta, ⚠️ armadilha, 💰 tesouro, 🎯 alvo, 📌 nota —, que começam
+    escondidos e ele revela quando quiser;
   - usa a **tela cheia** para mostrar o mapa numa TV na mesa.
 
-  A névoa esconde as *fichas*, não a imagem: a imagem do mapa é baixada inteira. Um jogador
-  curioso que abra o arquivo da imagem vê o mapa todo — para salas realmente secretas, use um
-  mapa separado.
+  Qualquer um da mesa desenha **áreas de efeito** — ◯ círculo (raio), ◭ cone e ━ linha — no
+  tamanho em metros; o mapa mostra na hora **quem é atingido**. Tira a área quem a pôs (ou o
+  mestre).
 - **Mapas**: galeria de imagens da campanha, que o mestre pode guardar e revelar depois.
+- **📣 Mostrar para a mesa**: o mestre clica numa imagem (Mapas) ou anotação e ela **abre na
+  tela de todo mundo**, na hora, como um handout. Se era secreta, fica revelada.
+- **⏳ Relógios de progresso** ("o ritual se completa em 6 segmentos"): o mestre enche os
+  segmentos com um clique e a mesa vê ao vivo, na visão geral e no combate. Podem ser só do
+  mestre.
+- **💰 Tesouro do grupo**: itens e moedas do grupo, **separados das fichas**. Qualquer um da
+  mesa guarda e tira; **dividir** as moedas entre os PJs marcados mostra quanto cada um recebe
+  e deixa a sobra no baú; **entregar** um item registra para quem foi. Nada mexe nas moedas
+  ou no inventário pessoal — cada um anota a sua parte na própria ficha. Tudo fica num
+  registro.
+- **📅 Calendário do mundo**: meses e dias da semana do seu mundo (Gregoriano, 12×30 ou
+  personalizado), a era ("DR") e o **hoje no mundo**, que o mestre avança (+1 dia, +1
+  semana…). Acontecimentos da linha do tempo e sessões ganham data no mundo e aparecem na
+  folhinha.
 - **Linha do tempo** e **mesa**.
 - **Convite por link**: quem abre faz login ou cria a conta e volta direto para confirmar a
   entrada. Gerar um código novo invalida o link antigo.
 - **Exportar campanha**: o mestre baixa um ZIP com tudo (fichas, sessões, anotações — inclusive
-  as secretas —, combates, linha do tempo, rolagens e imagens) em JSON legível. Os e-mails da
-  mesa não vão junto.
+  as secretas —, combates com o mapa tático, linha do tempo, relógios, tesouro, calendário,
+  rolagens e imagens) em JSON legível. Os e-mails da mesa não vão junto.
+- **Importar campanha** (no Painel): o ZIP vira uma campanha nova, com quem importou de
+  mestre. As fichas dos jogadores ficam com o mestre até cada dono entrar na mesa; aí ele
+  **entrega** a ficha na tela *Mesa*. (Entregar sozinho pelo nome de usuário seria perigoso:
+  qualquer um cria uma conta chamada "ana".) Não voltam: as pessoas da mesa, presenças e
+  rolagens.
+- **Esqueci minha senha**: link por e-mail, que vale 1 hora e funciona uma vez só (precisa
+  configurar o envio — veja abaixo).
+
+### Tudo ao vivo, numa consulta só
+A página pergunta ao servidor a cada 3 segundos, **uma vez só**, por tudo o que mostra —
+rolagens, rastreador, mapa, relógios, handout, tesouro, a própria ficha — e o servidor devolve
+só o que mudou. Com a aba escondida (outra aba aberta, celular bloqueado), a página para de
+perguntar. No plano gratuito do PythonAnywhere, que limita processamento, isso pesa bem menos
+que uma consulta por recurso.
 
 ---
 
@@ -128,7 +168,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-São mais de 160 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
+São mais de 200 testes: fórmulas e dados, CSRF, migrações (inclusive de banco antigo), ficha,
 edição simultânea, histórico, combate, mapa tático, permissões, anotações secretas, rolagens,
 convite, limite de login, validação de e-mail, exportação, importação e upload.
 Cada teste usa um banco temporário próprio — o seu banco real nunca é tocado.
@@ -181,6 +221,12 @@ os.environ['SECRET_KEY'] = 'ponha-aqui-uma-chave-longa-e-aleatoria'
 os.environ['SECURE_COOKIES'] = '1'   # o PythonAnywhere usa HTTPS
 os.environ['TIMEZONE'] = 'America/Sao_Paulo'
 os.environ['BEHIND_PROXY'] = '1'     # IP real dos visitantes (limite de login)
+
+# Opcional: e-mail para "Esqueci minha senha" (ver "Enviando e-mail" abaixo)
+# os.environ['MAIL_SERVER'] = 'smtp.gmail.com'
+# os.environ['MAIL_USERNAME'] = 'seuemail@gmail.com'
+# os.environ['MAIL_PASSWORD'] = 'senha-de-app-do-gmail'
+# os.environ['SITE_URL'] = 'https://SEU_USUARIO.pythonanywhere.com'
 
 from wsgi import application  # noqa
 ```
@@ -246,7 +292,22 @@ Web, em "WSGI configuration file".)
 **As migrações do banco rodam sozinhas** quando o site sobe; um banco criado antes das
 migrações existirem é reconhecido e atualizado sem perder dados.
 
-### Alguém esqueceu a senha
+### Enviando e-mail (recuperar senha)
+Com o envio configurado, o login ganha o "Esqueci minha senha" funcionando. O jeito mais
+simples é uma conta do Gmail:
+
+1. Na conta Google, ative a **verificação em duas etapas** e crie uma **senha de app**
+   (Conta Google → Segurança → Senhas de app).
+2. No arquivo WSGI, descomente as linhas `MAIL_*` e `SITE_URL` e preencha. `MAIL_PASSWORD` é a
+   senha de app, **não** a senha da conta.
+3. **Reload**.
+
+`SITE_URL` é o endereço do site usado no link do e-mail; com ele, ninguém consegue forjar um
+link apontando para outro domínio. Contas gratuitas do PythonAnywhere só conseguem enviar
+e-mail por alguns servidores liberados — o Gmail costuma estar entre eles; se o envio falhar,
+o erro aparece no **Error log** da aba Web.
+
+### Alguém esqueceu a senha (sem e-mail configurado)
 No **Bash console**:
 
 ```bash
@@ -285,6 +346,10 @@ O comando `flask backup` só funciona com SQLite; no MySQL use o backup da aba *
 | `AUTO_MIGRATE` | `1` | `0` se rodar vários processos web ao mesmo tempo. |
 | `UPLOAD_DIR` | `instance/uploads` | Onde ficam as imagens enviadas. |
 | `BACKUP_DIR` / `BACKUP_KEEP` | `instance/backups` / `14` | Pasta e quantidade de backups. |
+| `MAIL_SERVER` / `MAIL_PORT` | — / `587` | Servidor de e-mail (587 = STARTTLS, 465 = SSL). Sem ele, a recuperação por e-mail fica desligada. |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | — | Conta que envia (no Gmail, senha de app). |
+| `MAIL_FROM` | `MAIL_USERNAME` | Remetente mostrado. |
+| `SITE_URL` | endereço da requisição | Endereço público, usado nos links dos e-mails. |
 
 ---
 
@@ -300,8 +365,19 @@ RPG-Manager/
 │   ├── dice.py            rolagens no servidor
 │   ├── commands.py        flask backup, flask redefinir-senha
 │   ├── presets.py         os 6 sistemas prontos
-│   ├── blueprints/        auth, main, systems, campaigns, characters, uploads
-│   ├── static/js/         app.js (cliente HTTP), sheet.js, dice.js, encounter.js, system-editor.js
+│   ├── initiative.py      iniciativa de cada sistema
+│   ├── board.py           mapa tático (fichas, áreas, marcadores, névoa)
+│   ├── fogimage.py        recorta a imagem do mapa com a névoa (Pillow)
+│   ├── treasure.py        tesouro do grupo
+│   ├── worldcal.py        calendário do mundo
+│   ├── cas.py             gravação de JSON sem perder mudanças simultâneas
+│   ├── export.py          exportar campanha (ZIP)
+│   ├── importer.py        importar campanha
+│   ├── mail.py            envio de e-mail
+│   ├── blueprints/        auth, main, systems, campaigns, characters, uploads,
+│   │                      table (relógios, handout, tesouro, calendário), live (consulta única)
+│   ├── static/js/         app.js (cliente HTTP + consulta única + handout), sheet.js, dice.js,
+│   │                      encounter.js, board.js, clocks.js, treasure.js, system-editor.js
 │   └── templates/
 ├── migrations/            histórico do banco (Alembic)
 ├── tests/                 pytest
@@ -345,9 +421,16 @@ algum modelo ficou sem migração.
   HSTS em HTTPS.
 - **SECRET_KEY obrigatória em produção**: com `SECURE_COOKIES=1`, o site se recusa a subir com
   a chave padrão ou uma chave curta.
-- **E-mail**: o formato é conferido (`nome@dominio.com`), mas o site **não envia e-mail de
-  confirmação** — não há prova de que a pessoa é dona do endereço. Por isso o e-mail não
-  serve para recuperar senha; quem esquecer a senha usa `flask redefinir-senha`.
+- **E-mail**: o formato é conferido (`nome@dominio.com`). O cadastro não confirma o e-mail,
+  mas a recuperação de senha só manda o link **para o endereço da conta** — quem cadastrou um
+  e-mail alheio não recebe nada. O link vale 1 hora, funciona uma vez (trocar a senha o
+  invalida), tem limite de pedidos, e a resposta é a mesma exista a conta ou não.
+- **Nada de dados dentro de JavaScript**: confirmações ("Excluir a ficha de…?") vêm de
+  `data-confirm`, nunca de `onsubmit="confirm('{{ nome }}')"` — ali o nome escolhido por um
+  jogador viraria código rodando no navegador do mestre. Um teste falha se isso voltar.
+- **Importação**: o ZIP é conferido antes de abrir (quantidade de arquivos, tamanho
+  descompactado, taxa de compressão — contra "bomba de zip"); imagens passam pela mesma
+  checagem dos uploads; se algo falhar no meio, nada é gravado.
 - Fórmulas nunca são executadas como código.
 
 ---

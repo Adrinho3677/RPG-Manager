@@ -54,7 +54,7 @@
             <a class="btn btn-primary btn-sm" href="{{ url_for('systems.edit', system_id=system.id) }}">Editar</a>
             <a class="btn btn-ghost btn-sm" href="{{ url_for('systems.detail', system_id=system.id) }}">Ver</a>
             <form method="post" action="{{ url_for('systems.delete', system_id=system.id) }}"
-                  onsubmit="return confirm('Excluir este sistema?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  data-confirm="Excluir este sistema?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-danger btn-sm" type="submit">Excluir</button>
             </form>
           </div>

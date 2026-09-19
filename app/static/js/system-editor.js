@@ -250,6 +250,13 @@
     state.attribute_display = displaySel.value;
     state.skill_mode = skillModeSel.value;
     state.roll = Object.assign({}, state.roll || {}, { type: rollSel.value });
+    var initSource = document.getElementById("init_source");
+    if (initSource) {
+      var initValue = document.getElementById("init_value").value.trim();
+      state.initiative = { source: initSource.value, roll: document.getElementById("init_roll").checked };
+      if (initSource.value === "formula") state.initiative.formula = initValue;
+      else state.initiative.key = initValue;
+    }
     state.inventory = {
       mode: invMode.value,
       unit: invUnit.value,

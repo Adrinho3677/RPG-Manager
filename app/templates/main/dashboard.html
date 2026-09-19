@@ -7,6 +7,7 @@
     <p class="subtitle">O que vamos jogar hoje?</p>
   </div>
   <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('campaigns.import_campaign') }}">Importar campanha</a>
     <a class="btn btn-primary" href="{{ url_for('campaigns.create') }}">+ Nova campanha</a>
     <a class="btn btn-ghost" href="{{ url_for('characters.create') }}">+ Nova ficha</a>
   </div>

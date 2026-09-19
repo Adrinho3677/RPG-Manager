@@ -2,6 +2,8 @@
 {% block title %}Linha do tempo · {{ campaign.name }}{% endblock %}
 {% block content %}
 {% include "campaigns/_nav.html" %}
+{% from "campaigns/_world_date.html" import world_date_fields with context %}
+{% set cal = world_calendar(campaign) %}
 
 <div class="split">
   <div class="card">
@@ -9,11 +11,12 @@
     {% if entries %}
       <div class="timeline">
         {% for entry in entries %}
-          <div class="timeline-item">
+          <div class="timeline-item" id="t{{ entry.id }}">
             <div class="card" style="box-shadow:none">
               <div class="card-head" style="margin-bottom:.35rem">
                 <h3>{{ entry.title }}</h3>
                 <span class="tags">
+                  {% if entry.world_day is not none and cal %}<span class="tag tag-accent">📅 {{ world_date(campaign, entry.world_day) }}</span>{% endif %}
                   {% if entry.label %}<span class="tag tag-gold">{{ entry.label }}</span>{% endif %}
                   <span class="tag">{{ entry.author.username }}</span>
                 </span>
@@ -22,7 +25,7 @@
               {% if is_master or entry.author_id == current_user.id %}
                 <form method="post" style="margin-top:.5rem"
                       action="{{ url_for('campaigns.timeline_delete', campaign_id=campaign.id, entry_id=entry.id) }}"
-                      onsubmit="return confirm('Remover este acontecimento?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      data-confirm="Remover este acontecimento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-danger btn-sm" type="submit">Remover</button>
                 </form>
               {% endif %}
@@ -42,10 +45,20 @@
         <label for="title">O que aconteceu</label>
         <input type="text" id="title" name="title" required placeholder="A queda da Casa Valmont">
       </div>
-      <div class="field">
-        <label for="label">Quando (no mundo do jogo)</label>
-        <input type="text" id="label" name="label" placeholder="Ex.: 3º dia de Inverno, Ano 412">
-      </div>
+      {% if cal %}
+        {{ world_date_fields(cal, cal.today, "Quando (no calendário do mundo)") }}
+        <div class="field">
+          <label for="label">Rótulo livre <span class="muted small">(opcional)</span></label>
+          <input type="text" id="label" name="label" placeholder="Ex.: noite do eclipse">
+        </div>
+      {% else %}
+        <div class="field">
+          <label for="label">Quando (no mundo do jogo)</label>
+          <input type="text" id="label" name="label" placeholder="Ex.: 3º dia de Inverno, Ano 412">
+          {% if is_master %}<span class="hint">Configure o <a href="{{ url_for('table.calendar', campaign_id=campaign.id) }}">calendário do mundo</a>
+            para datar os acontecimentos e vê-los numa folhinha.</span>{% endif %}
+        </div>
+      {% endif %}
       <div class="field">
         <label for="body">Detalhes</label>
         <textarea id="body" name="body" style="min-height:120px"></textarea>

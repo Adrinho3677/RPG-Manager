@@ -771,10 +771,18 @@
         if (Number(data.version) > Number(versionInput.value)) lockStale();
       }).catch(function () {});
     }
-    setInterval(checkForChanges, 20000);
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) checkForChanges();
-    });
+    if (window.Live && window.Live.enabled && config.id) {
+      // Ficha de campanha: a versão vem junto com as rolagens da mesa.
+      window.Live.register("sheet", config.id, function (data) {
+        if (saving || stale) return;
+        if (Number(data.version) > Number(versionInput.value)) lockStale();
+      }, { mark: versionInput.value });
+    } else {
+      setInterval(checkForChanges, 20000);
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) checkForChanges();
+      });
+    }
   }
 
   Object.keys(GROUPS).forEach(function (group) { renderGroup(group, false); });

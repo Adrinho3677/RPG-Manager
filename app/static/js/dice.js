@@ -142,10 +142,17 @@
   if (config.feed_url) {
     ensurePanel();
     panel.classList.add("collapsed");
-    poll();
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) poll();
-    });
+    if (global.Live && global.Live.enabled) {
+      // Vem junto com o resto das novidades da página (uma requisição só).
+      global.Live.register("rolls", "", function (rolls) {
+        (rolls || []).forEach(function (r) { render(r, false); });
+      }, { fast: true });
+    } else {
+      poll();
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) poll();
+      });
+    }
   }
 
   document.addEventListener("click", function (event) {
