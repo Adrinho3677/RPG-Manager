@@ -112,10 +112,14 @@ pode fazer **rolagens secretas**.
   ou no inventário pessoal — cada um anota a sua parte na própria ficha. Tudo fica num
   registro.
 - **📅 Calendário do mundo**: meses e dias da semana do seu mundo (Gregoriano, 12×30 ou
-  personalizado), a era ("DR") e o **hoje no mundo**, que o mestre avança (+1 dia, +1
-  semana…). Acontecimentos da linha do tempo e sessões ganham data no mundo e aparecem na
-  folhinha.
-- **Linha do tempo** e **mesa**.
+  personalizado), a era ("DR") e o **hoje no mundo — com hora** —, que o mestre avança (+1 hora,
+  +8 horas, +1 dia, +1 semana…; horas que passam da meia-noite viram o dia seguinte).
+  Acontecimentos da linha do tempo e sessões ganham data e hora no mundo e aparecem na folhinha,
+  ordenados pela hora dentro do dia; a lista "Neste mês" ordena do começo ao fim ou ao contrário.
+- **Linha do tempo**: ordene pela história (mais recente primeiro ou do começo ao fim) ou pela
+  ordem de registro — a escolha fica lembrada. Quem registrou (e o mestre) **edita** título,
+  texto, data e hora.
+- **Mesa**: quem está na campanha, convite e fichas importadas.
 - **Convite por link**: quem abre faz login ou cria a conta e volta direto para confirmar a
   entrada. Gerar um código novo invalida o link antigo.
 - **Exportar campanha**: o mestre baixa um ZIP com tudo (fichas, sessões, anotações — inclusive

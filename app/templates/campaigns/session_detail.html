@@ -53,7 +53,7 @@
             {% set cal = world_calendar(campaign) %}
             {% if cal %}
               {% from "campaigns/_world_date.html" import world_date_fields with context %}
-              {{ world_date_fields(cal, session.world_day, "Data no mundo") }}
+              {{ world_date_fields(cal, session.world_day, "Data no mundo", minute=session.world_minute) }}
             {% endif %}
             <div class="field">
               <label for="status">Situação</label>

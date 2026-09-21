@@ -1,7 +1,7 @@
 {# Campos de data do calendário do mundo. Uso:
    {% from "campaigns/_world_date.html" import world_date_fields with context %}
    {{ world_date_fields(cal, valor_ordinal, rotulo) }} #}
-{% macro world_date_fields(cal, value, label="Data no mundo", prefix="world") %}
+{% macro world_date_fields(cal, value, label="Data no mundo", prefix="world", minute=none) %}
   {% if cal %}
     {% set parts = world_parts(cal, value) %}
     <div class="field">
@@ -18,6 +18,9 @@
         <input type="number" name="{{ prefix }}_year" min="1" placeholder="ano"
                value="{{ parts[0] if parts else '' }}" aria-label="Ano">
         {% if cal.era %}<span class="muted small">{{ cal.era }}</span>{% endif %}
+        <input type="text" name="{{ prefix }}_time" inputmode="numeric" maxlength="5" placeholder="hora"
+               class="world-time" value="{{ world_time(minute) }}" aria-label="Hora (ex.: 14:30)"
+               title="Hora no mundo, opcional (ex.: 14:30)">
       </div>
     </div>
   {% endif %}

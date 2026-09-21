@@ -45,6 +45,10 @@ class ImportError_(ValueError):
     """Arquivo inválido: a mensagem vai para a pessoa."""
 
 
+def _minute(value):
+    return value if isinstance(value, int) and 0 <= value < 24 * 60 else None
+
+
 def _text(value, limit):
     return str(value or "").strip()[:limit]
 
@@ -166,6 +170,7 @@ class _Importer(object):
                 recap=_text(raw.get("resumo"), 50000),
                 beats=raw.get("cenas") if isinstance(raw.get("cenas"), list) else [],
                 world_day=raw.get("data_no_mundo") if isinstance(raw.get("data_no_mundo"), int) else None,
+                world_minute=_minute(raw.get("hora_no_mundo")),
             ))
 
         for raw in self.rows(doc, "anotacoes"):
@@ -209,6 +214,7 @@ class _Importer(object):
                 campaign_id=campaign.id, author_id=self.user.id, label=_text(raw.get("quando_no_jogo"), 120),
                 title=_text(raw.get("titulo"), 200) or "Acontecimento", body=_text(raw.get("texto"), 50000),
                 world_day=raw.get("data_no_mundo") if isinstance(raw.get("data_no_mundo"), int) else None,
+                world_minute=_minute(raw.get("hora_no_mundo")),
             ))
 
         for position, raw in enumerate(self.rows(doc, "relogios")[:30]):

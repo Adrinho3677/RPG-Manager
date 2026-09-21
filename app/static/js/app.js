@@ -200,6 +200,10 @@
       }
     });
   });
+  // Seletores que aplicam na hora (ex.: ordenação), sem botão "Ok".
+  document.querySelectorAll("select[data-autosubmit]").forEach(function (select) {
+    select.addEventListener("change", function () { select.form.submit(); });
+  });
   document.querySelectorAll("[data-select-all]").forEach(function (field) {
     field.addEventListener("focus", function () { field.select(); });
   });

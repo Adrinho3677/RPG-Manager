@@ -87,6 +87,7 @@ def build_document(campaign):
             "horario": item.start_time,
             "situacao": item.status,
             "data_no_mundo": item.world_day,
+            "hora_no_mundo": item.world_minute,
             "sinopse": item.synopsis,
             "roteiro_do_mestre": item.plan,
             "resumo": item.recap,
@@ -147,6 +148,7 @@ def build_document(campaign):
                       "mapa_tatico": e.board}
                      for e in campaign.encounters.order_by(Encounter.created_at).all()],
         "linha_do_tempo": [{"quando_no_jogo": t.label, "data_no_mundo": t.world_day,
+                            "hora_no_mundo": t.world_minute,
                             "titulo": t.title, "texto": t.body,
                             "autor": t.author.username, "registrado": _stamp(t.created_at)}
                            for t in campaign.timeline.order_by(TimelineEntry.created_at).all()],

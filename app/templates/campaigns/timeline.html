@@ -7,7 +7,23 @@
 
 <div class="split">
   <div class="card">
-    <div class="card-head"><h2>Acontecimentos</h2><span class="tag">{{ entries|length }}</span></div>
+    <div class="card-head">
+      <h2>Acontecimentos <span class="tag">{{ entries|length }}</span></h2>
+      {% if entries|length > 1 %}
+        <form method="get" class="timeline-order">
+          <label for="ordem" class="muted small">Ordenar</label>
+          <select id="ordem" name="ordem" data-autosubmit>
+            {% for value, text in orders %}
+              <option value="{{ value }}" {% if value == order %}selected{% endif %}>{{ text }}</option>
+            {% endfor %}
+          </select>
+          <noscript><button class="btn btn-ghost btn-sm" type="submit">Ok</button></noscript>
+        </form>
+      {% endif %}
+    </div>
+    {% if order.startswith('historia') and entries and entries[-1].world_day is none and entries[0].world_day is not none %}
+      <p class="hint">Na ordem da história, os acontecimentos sem data no mundo ficam no fim.</p>
+    {% endif %}
     {% if entries %}
       <div class="timeline">
         {% for entry in entries %}
@@ -16,18 +32,22 @@
               <div class="card-head" style="margin-bottom:.35rem">
                 <h3>{{ entry.title }}</h3>
                 <span class="tags">
-                  {% if entry.world_day is not none and cal %}<span class="tag tag-accent">📅 {{ world_date(campaign, entry.world_day) }}</span>{% endif %}
+                  {% if entry.world_day is not none and cal %}<span class="tag tag-accent">📅 {{ world_date(campaign, entry.world_day, False, entry.world_minute) }}</span>{% endif %}
                   {% if entry.label %}<span class="tag tag-gold">{{ entry.label }}</span>{% endif %}
                   <span class="tag">{{ entry.author.username }}</span>
                 </span>
               </div>
               {% if entry.body %}<div class="prose small">{{ entry.body|rich }}</div>{% endif %}
               {% if is_master or entry.author_id == current_user.id %}
-                <form method="post" style="margin-top:.5rem"
-                      action="{{ url_for('campaigns.timeline_delete', campaign_id=campaign.id, entry_id=entry.id) }}"
-                      data-confirm="Remover este acontecimento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-danger btn-sm" type="submit">Remover</button>
-                </form>
+                <div class="actions" style="margin-top:.5rem">
+                  <a class="btn btn-ghost btn-sm" href="{{ url_for('campaigns.timeline_edit', campaign_id=campaign.id, entry_id=entry.id) }}">✎ Editar</a>
+                  <form method="post"
+                        action="{{ url_for('campaigns.timeline_delete', campaign_id=campaign.id, entry_id=entry.id) }}"
+                        data-confirm="Remover este acontecimento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-danger btn-sm" type="submit">Remover</button>
+                  </form>
+                  {% if entry.updated_at %}<span class="muted small">editado {{ entry.updated_at|hora }}</span>{% endif %}
+                </div>
               {% endif %}
             </div>
           </div>
@@ -46,7 +66,7 @@
         <input type="text" id="title" name="title" required placeholder="A queda da Casa Valmont">
       </div>
       {% if cal %}
-        {{ world_date_fields(cal, cal.today, "Quando (no calendário do mundo)") }}
+        {{ world_date_fields(cal, cal.today, "Quando (no calendário do mundo)", minute=cal.minute) }}
         <div class="field">
           <label for="label">Rótulo livre <span class="muted small">(opcional)</span></label>
           <input type="text" id="label" name="label" placeholder="Ex.: noite do eclipse">

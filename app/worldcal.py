@@ -13,6 +13,10 @@ Campaign.calendar (JSON):
     first_weekday  dia da semana do dia 1/1/1
     era            texto depois do ano
     today          data atual do mundo (número de dias)
+    minute         hora de "hoje", em minutos desde a meia-noite (ou None)
+
+Linha do tempo e sessões guardam dia (world_day) e, se quiser, hora
+(world_minute). Dia de 24 horas em qualquer calendário.
 """
 from app.utils import to_int
 
@@ -73,6 +77,8 @@ def normalize(raw):
         "first_weekday": to_int(raw.get("first_weekday"), 0) % (len(weekdays) or 1),
         "era": str(raw.get("era") or "").strip()[:20],
         "today": max(0, min(MAX_YEAR * year_length, to_int(raw.get("today"), 0))),
+        # Hora de "hoje" em minutos desde a meia-noite (None = sem hora marcada).
+        "minute": _minute_or_none(raw.get("minute")),
     }
 
 
@@ -132,7 +138,7 @@ def weekday(calendar, ordinal):
     return calendar["weekdays"][(ordinal + calendar["first_weekday"]) % len(calendar["weekdays"])]
 
 
-def format_date(calendar, ordinal, with_weekday=False):
+def format_date(calendar, ordinal, with_weekday=False, minute=None):
     if calendar is None or ordinal is None:
         return ""
     year, month, day = from_ordinal(calendar, ordinal)
@@ -141,7 +147,62 @@ def format_date(calendar, ordinal, with_weekday=False):
         text += " " + calendar["era"]
     if with_weekday and calendar["weekdays"]:
         text = "%s, %s" % (weekday(calendar, ordinal), text)
+    if minute is not None:
+        text += ", " + format_time(minute)
     return text
+
+
+# ------------------------------------------------------------------ horas
+MINUTES_PER_DAY = 24 * 60
+
+
+def _minute_or_none(value):
+    if value is None or value == "":
+        return None
+    minute = to_int(value, -1)
+    return minute if 0 <= minute < MINUTES_PER_DAY else None
+
+
+def parse_time(text):
+    """ "14:30", "14h30", "14h", "9" → minutos desde a meia-noite. Vazio → None."""
+    import re
+    text = (text or "").strip().lower()
+    if not text:
+        return None
+    match = re.fullmatch(r"(\d{1,2})\s*(?:[:h]\s*(\d{1,2})?)?\s*(?:min)?", text)
+    if not match:
+        raise CalendarError("Hora inválida: use algo como 14:30.")
+    hour, minute = int(match.group(1)), int(match.group(2) or 0)
+    if hour > 23 or minute > 59:
+        raise CalendarError("Hora inválida: vai de 00:00 a 23:59.")
+    return hour * 60 + minute
+
+
+def format_time(minute):
+    return "%02d:%02d" % divmod(int(minute), 60) if minute is not None else ""
+
+
+def time_from_form(form, prefix="world", has_date=True):
+    minute = parse_time(form.get("%s_time" % prefix))
+    if minute is not None and not has_date:
+        raise CalendarError("Informe a data junto com a hora.")
+    return minute
+
+
+def advance(calendar, days=0, hours=0):
+    """Anda o "hoje" do mundo. Horas que passam da meia-noite viram dias."""
+    total = (calendar["minute"] or 0) + int(hours) * 60 if hours else calendar["minute"]
+    if total is not None:
+        extra, total = divmod(total, MINUTES_PER_DAY)
+        days += extra
+    calendar["today"] = max(0, calendar["today"] + int(days))
+    calendar["minute"] = total
+    return calendar
+
+
+def chronology(day, minute):
+    """Chave de ordenação: dia e, dentro do dia, a hora (sem hora vem primeiro)."""
+    return (day, -1 if minute is None else minute)
 
 
 def month_grid(calendar, year, month):

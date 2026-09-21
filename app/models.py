@@ -274,6 +274,7 @@ class GameSession(db.Model):
     recap = db.Column(db.Text, default="")
     beats = db.Column(JSONField, default=list)
     world_day = db.Column(db.Integer, nullable=True)  # data no calendário do mundo
+    world_minute = db.Column(db.Integer, nullable=True)  # hora no mundo (min. desde 00:00)
     reminded_at = db.Column(db.DateTime, nullable=True)  # lembrete por e-mail já enviado
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -389,7 +390,9 @@ class TimelineEntry(db.Model):
     title = db.Column(db.String(200), nullable=False)
     body = db.Column(db.Text, default="")
     world_day = db.Column(db.Integer, nullable=True)  # data no calendário do mundo
+    world_minute = db.Column(db.Integer, nullable=True)  # hora no mundo (min. desde 00:00)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=True)  # última edição
 
     campaign = db.relationship("Campaign", back_populates="timeline")
     author = db.relationship("User")

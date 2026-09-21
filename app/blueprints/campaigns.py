@@ -4,7 +4,7 @@ import secrets
 from datetime import date, datetime
 
 from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
-                   request, send_file, url_for)
+                   request, send_file, session, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy import and_, or_
 
@@ -438,7 +438,7 @@ def session_detail(campaign_id, session_id):
         item.scheduled_for = parse_date(request.form.get("scheduled_for"))
         item.start_time = parse_time(request.form.get("start_time"))
         try:
-            item.world_day = worldcal.date_from_form(worldcal.normalize(campaign.calendar), request.form)
+            item.world_day, item.world_minute = world_when(campaign, request.form)
         except worldcal.CalendarError as error:
             flash("Data no mundo: %s" % error, "error")
             return redirect(url_for("campaigns.session_detail", campaign_id=campaign.id,
@@ -1142,7 +1142,8 @@ def tv(campaign_id):
         board=board_payload(campaign, encounter, public=True) if encounter else None,
         state=encounter_state(encounter, False) if encounter else None,
         world=worldcal.format_date(worldcal.normalize(campaign.calendar),
-                                   (campaign.calendar or {}).get("today"), True) if campaign.calendar else "",
+                                   (campaign.calendar or {}).get("today"), True,
+                                   worldcal.normalize(campaign.calendar)["minute"]) if campaign.calendar else "",
     )
 
 
@@ -1441,6 +1442,34 @@ def roll_free(campaign_id):
 
 
 # --------------------------------------------------------------- linha do tempo
+TIMELINE_ORDERS = [
+    ("historia", "História: mais recente primeiro"),
+    ("historia_asc", "História: do começo ao fim"),
+    ("registro", "Registrados por último primeiro"),
+    ("registro_asc", "Registrados primeiro"),
+]
+
+
+def world_when(campaign, form):
+    """(dia, hora) no mundo lidos de um formulário. Levanta CalendarError."""
+    cal = worldcal.normalize(campaign.calendar)
+    world_day = worldcal.date_from_form(cal, form)
+    world_minute = worldcal.time_from_form(form, has_date=world_day is not None) if cal else None
+    return world_day, world_minute
+
+
+def sort_timeline(entries, order):
+    """Ordem da história usa o dia e a hora no mundo; sem data, vai para o fim."""
+    if order.startswith("registro"):
+        return sorted(entries, key=lambda e: (e.created_at, e.id), reverse=order == "registro")
+    dated = [e for e in entries if e.world_day is not None]
+    undated = sorted([e for e in entries if e.world_day is None],
+                     key=lambda e: (e.created_at, e.id), reverse=True)
+    dated.sort(key=lambda e: (worldcal.chronology(e.world_day, e.world_minute), e.id),
+               reverse=order == "historia")
+    return dated + undated
+
+
 @bp.route("/<int:campaign_id>/linha-do-tempo", methods=["GET", "POST"])
 @login_required
 def timeline(campaign_id):
@@ -1448,37 +1477,74 @@ def timeline(campaign_id):
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
         try:
-            world_day = worldcal.date_from_form(worldcal.normalize(campaign.calendar), request.form)
+            world_day, world_minute = world_when(campaign, request.form)
         except worldcal.CalendarError as error:
             flash("Data no mundo: %s" % error, "error")
             return redirect(url_for("campaigns.timeline", campaign_id=campaign.id))
         if not title:
             flash("Dê um título ao acontecimento.", "error")
         else:
-            db.session.add(
-                TimelineEntry(
-                    campaign_id=campaign.id,
-                    author_id=current_user.id,
-                    label=(request.form.get("label") or "").strip()[:120],
-                    title=title[:200],
-                    body=(request.form.get("body") or "").strip(),
-                    world_day=world_day,
-                )
+            entry = TimelineEntry(
+                campaign_id=campaign.id,
+                author_id=current_user.id,
+                label=(request.form.get("label") or "").strip()[:120],
+                title=title[:200],
+                body=(request.form.get("body") or "").strip(),
+                world_day=world_day,
+                world_minute=world_minute,
             )
+            db.session.add(entry)
             db.session.commit()
             flash("Registrado na linha do tempo.", "success")
+            return redirect(url_for("campaigns.timeline", campaign_id=campaign.id) + "#t%d" % entry.id)
         return redirect(url_for("campaigns.timeline", campaign_id=campaign.id))
 
-    entries = campaign.timeline.order_by(TimelineEntry.created_at.desc()).all()
-    # Com data no mundo, a ordem é a da história (mais recente no jogo em cima);
-    # sem data, a ordem em que foram registrados.
-    entries.sort(key=lambda e: (e.world_day is None, -(e.world_day or 0)))
+    # A ordem escolhida fica lembrada para a próxima visita.
+    order = request.args.get("ordem")
+    if order in dict(TIMELINE_ORDERS):
+        session["ordem_linha_do_tempo"] = order
+    order = session.get("ordem_linha_do_tempo", "historia")
+    if order not in dict(TIMELINE_ORDERS):
+        order = "historia"
+    entries = sort_timeline(campaign.timeline.all(), order)
     return render_template(
         "campaigns/timeline.html",
         campaign=campaign,
         is_master=campaign.is_master(current_user),
         entries=entries,
+        order=order,
+        orders=TIMELINE_ORDERS,
     )
+
+
+@bp.route("/<int:campaign_id>/linha-do-tempo/<int:entry_id>/editar", methods=["GET", "POST"])
+@login_required
+def timeline_edit(campaign_id, entry_id):
+    """Quem registrou (ou o mestre) corrige título, texto, data e hora."""
+    campaign = get_campaign(campaign_id)
+    entry = TimelineEntry.query.filter_by(id=entry_id, campaign_id=campaign.id).first_or_404()
+    if entry.author_id != current_user.id and not campaign.is_master(current_user):
+        abort(403)
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        try:
+            world_day, world_minute = world_when(campaign, request.form)
+            if not title:
+                raise worldcal.CalendarError("Dê um título ao acontecimento.")
+        except worldcal.CalendarError as error:
+            flash(str(error), "error")
+        else:
+            entry.title = title[:200]
+            entry.label = (request.form.get("label") or "").strip()[:120]
+            entry.body = (request.form.get("body") or "").strip()
+            if worldcal.normalize(campaign.calendar) is not None:
+                entry.world_day, entry.world_minute = world_day, world_minute
+            entry.updated_at = datetime.utcnow()
+            db.session.commit()
+            flash("Acontecimento atualizado.", "success")
+            return redirect(url_for("campaigns.timeline", campaign_id=campaign.id) + "#t%d" % entry.id)
+    return render_template("campaigns/timeline_edit.html", campaign=campaign,
+                           is_master=campaign.is_master(current_user), entry=entry)
 
 
 @bp.route("/<int:campaign_id>/linha-do-tempo/<int:entry_id>/excluir", methods=["POST"])

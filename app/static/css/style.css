@@ -873,3 +873,12 @@ body.tv-mode .page { max-width: none; padding: .6rem .8rem; }
 .tv-roll.fail .tv-roll-result { color: #f2a0a0; }
 .tv-link { margin: 0 0 .6rem; }
 @media (max-width: 900px) { .tv-body { grid-template-columns: 1fr; } }
+
+/* linha do tempo: ordenação e hora no mundo */
+.timeline-order { display: flex; align-items: center; gap: .4rem; margin: 0; }
+.timeline-order label { margin: 0; }
+.timeline-order select { width: auto; padding: .3rem .5rem; font-size: .85rem; }
+.world-date .world-time { width: 76px; }
+.calendar-event b { font-weight: 800; color: var(--accent-2); }
+.calendar-agenda-head { margin-top: 1rem; }
+.calendar-set .world-time { width: 72px; }

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Editar acontecimento · {{ campaign.name }}{% endblock %}
+{% block content %}
+{% include "campaigns/_nav.html" %}
+{% from "campaigns/_world_date.html" import world_date_fields with context %}
+{% set cal = world_calendar(campaign) %}
+
+<form method="post" class="card" style="max-width:720px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card-head">
+    <h2>Editar acontecimento</h2>
+    <span class="muted small">registrado por {{ entry.author.username }} em {{ entry.created_at|hora }}</span>
+  </div>
+  <div class="field">
+    <label for="title">O que aconteceu</label>
+    <input type="text" id="title" name="title" required maxlength="200" value="{{ entry.title }}">
+  </div>
+  {% if cal %}
+    {{ world_date_fields(cal, entry.world_day, "Quando (no calendário do mundo)", minute=entry.world_minute) }}
+    <p class="hint" style="margin-top:-.5rem">Apague dia, mês e ano para deixar sem data.</p>
+  {% endif %}
+  <div class="field">
+    <label for="label">{{ 'Rótulo livre' if cal else 'Quando (no mundo do jogo)' }} <span class="muted small">(opcional)</span></label>
+    <input type="text" id="label" name="label" maxlength="120" value="{{ entry.label or '' }}">
+  </div>
+  <div class="field">
+    <label for="body">Detalhes</label>
+    <textarea id="body" name="body" style="min-height:180px">{{ entry.body or '' }}</textarea>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" type="submit">Salvar</button>
+    <a class="btn btn-ghost" href="{{ url_for('campaigns.timeline', campaign_id=campaign.id) }}#t{{ entry.id }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

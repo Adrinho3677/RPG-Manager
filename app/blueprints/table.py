@@ -8,7 +8,7 @@ chega pela consulta única de app/blueprints/live.py.
 from datetime import datetime, timedelta
 
 from flask import (Blueprint, abort, flash, jsonify, redirect, render_template, request,
-                   url_for)
+                   session, url_for)
 from flask_login import current_user, login_required
 
 from app import security
@@ -36,7 +36,7 @@ def table_helpers():
     def world_parts(cal, ordinal):
         return worldcal.from_ordinal(cal, ordinal) if cal and ordinal is not None else None
     return {"clock_list": clocks_payload, "world_date": date_label, "world_calendar": calendar_of,
-            "world_parts": world_parts}
+            "world_parts": world_parts, "world_time": worldcal.format_time}
 
 
 # ======================================================== relógios de progresso
@@ -330,8 +330,8 @@ def calendar_of(campaign):
     return worldcal.normalize(campaign.calendar)
 
 
-def date_label(campaign, ordinal, with_weekday=False):
-    return worldcal.format_date(calendar_of(campaign), ordinal, with_weekday)
+def date_label(campaign, ordinal, with_weekday=False, minute=None):
+    return worldcal.format_date(calendar_of(campaign), ordinal, with_weekday, minute)
 
 
 @bp.route("/<int:campaign_id>/calendario")
@@ -354,27 +354,46 @@ def calendar(campaign_id):
     first = worldcal.to_ordinal(cal, year, month, 1)
     last = first + cal["months"][month - 1]["days"] - 1
 
-    events = {}
+    month_events = []
     for entry in campaign.timeline.filter(TimelineEntry.world_day.between(first, last)):
-        events.setdefault(entry.world_day, []).append(
-            {"kind": "evento", "title": entry.title,
+        month_events.append(
+            {"kind": "evento", "title": entry.title, "day": entry.world_day, "minute": entry.world_minute,
+             "id": entry.id,
              "url": url_for("campaigns.timeline", campaign_id=campaign.id) + "#t%d" % entry.id})
     for item in campaign.sessions.filter(GameSession.world_day.between(first, last)):
-        events.setdefault(item.world_day, []).append(
+        month_events.append(
             {"kind": "sessao", "title": "Sessão %d · %s" % (item.number, item.title),
+             "day": item.world_day, "minute": item.world_minute, "id": item.id,
              "url": url_for("campaigns.session_detail", campaign_id=campaign.id,
                             session_id=item.id)})
+    for event in month_events:
+        event["time"] = worldcal.format_time(event["minute"])
+        event["date"] = worldcal.format_date(cal, event["day"], False, event["minute"])
+    # Dentro de cada dia, pela hora (sem hora primeiro); a lista do mês na ordem escolhida.
+    month_events.sort(key=lambda e: (worldcal.chronology(e["day"], e["minute"]), e["kind"], e["id"]))
+    events = {}
+    for event in month_events:
+        events.setdefault(event["day"], []).append(event)
+
+    order = request.args.get("ordem")
+    if order in ("asc", "desc"):
+        session["ordem_calendario"] = order
+    order = session.get("ordem_calendario", "asc")
+    agenda = list(reversed(month_events)) if order == "desc" else month_events
 
     prev_month = (year, month - 1) if month > 1 else (year - 1, len(cal["months"]))
     next_month = (year, month + 1) if month < len(cal["months"]) else (year + 1, 1)
     upcoming = (campaign.timeline.filter(TimelineEntry.world_day.isnot(None))
-                .order_by(TimelineEntry.world_day.desc()).limit(8).all())
+                .order_by(TimelineEntry.world_day.desc(), TimelineEntry.world_minute.desc())
+                .limit(8).all())
     return render_template(
         "campaigns/calendar.html", campaign=campaign, is_master=is_master, cal=cal,
         presets=worldcal.PRESETS, year=year, month=month, grid=grid, events=events,
-        today=cal["today"], today_label=worldcal.format_date(cal, cal["today"], True),
+        agenda=agenda, order=order,
+        today=cal["today"], today_label=worldcal.format_date(cal, cal["today"], True, cal["minute"]),
         prev_month=prev_month if prev_month[0] >= 1 else None, next_month=next_month,
-        recent=upcoming, fmt=lambda o: worldcal.format_date(cal, o),
+        recent=upcoming, fmt=lambda o, m=None: worldcal.format_date(cal, o, False, m),
+        now_time=worldcal.format_time(cal["minute"]),
     )
 
 
@@ -406,14 +425,18 @@ def calendar_change(campaign_id):
             raise worldcal.CalendarError("Configure o calendário primeiro.")
         elif action == "advance":
             days = max(-3650, min(3650, to_int(request.form.get("days"), 0)))
-            cal["today"] = max(0, cal["today"] + days)
+            hours = max(-240, min(240, to_int(request.form.get("hours"), 0)))
+            worldcal.advance(cal, days=days, hours=hours)
             campaign.calendar = cal
-            flash("Hoje no mundo: %s." % worldcal.format_date(cal, cal["today"], True), "success")
+            flash("Hoje no mundo: %s." % worldcal.format_date(cal, cal["today"], True, cal["minute"]),
+                  "success")
         elif action == "set":
             cal["today"] = worldcal.to_ordinal(cal, request.form.get("year"),
                                                request.form.get("month"), request.form.get("day"))
+            cal["minute"] = worldcal.parse_time(request.form.get("time"))
             campaign.calendar = cal
-            flash("Hoje no mundo: %s." % worldcal.format_date(cal, cal["today"], True), "success")
+            flash("Hoje no mundo: %s." % worldcal.format_date(cal, cal["today"], True, cal["minute"]),
+                  "success")
         elif action == "clear":
             campaign.calendar = None
             flash("Calendário removido. As datas das entradas ficam guardadas.", "success")

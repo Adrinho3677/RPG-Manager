@@ -107,7 +107,7 @@
     {% if cal %}
       <a class="card world-today" href="{{ url_for('table.calendar', campaign_id=campaign.id) }}">
         <span class="muted small">📅 Hoje no mundo</span>
-        <strong>{{ world_date(campaign, cal.today, True) }}</strong>
+        <strong>{{ world_date(campaign, cal.today, True, cal.minute) }}</strong>
       </a>
     {% endif %}
 
