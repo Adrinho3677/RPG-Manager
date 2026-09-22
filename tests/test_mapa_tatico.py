@@ -146,8 +146,15 @@ def test_grade_menor_traz_fichas_para_dentro(mesa):
 
     bad = mestre.post(base + "/mapa/configurar", json={"cell_size": "0"})
     assert bad.status_code == 400
-    huge = mestre.post(base + "/mapa/configurar", json={"cols": 5000}).get_json()
-    assert huge["cols"] == board_helper.MAX_SIDE
+    huge = mestre.post(base + "/mapa/configurar", json={"cols": 5000})
+    assert huge.status_code == 400 and "quebrado" in huge.get_json()["message"]
+
+    # Grade quebrada: 18,5 × 2,87 (o último quadrado de cada borda fica parcial).
+    state = mestre.post(base + "/mapa/configurar", json={"cols": "18,5", "rows": 2.87}).get_json()
+    assert (state["cols"], state["rows"]) == (18.5, 2.87)
+    assert board_helper.cells_across(18.5) == 19 and board_helper.cells_across(2.87) == 3
+    assert mestre.post(base + "/mapa/mover", json={"uid": uids["Kian"], "x": 18, "y": 2}).status_code == 200
+    assert mestre.post(base + "/mapa/mover", json={"uid": uids["Kian"], "x": 19, "y": 0}).status_code == 400
 
 
 def test_salvar_rastreador_nao_apaga_posicoes(mesa):
@@ -228,9 +235,10 @@ def test_normalize_ignora_lixo():
     board = board_helper.normalize({"cols": "abc", "rows": -3, "revealed": ["1,1", "x", "99,99"],
                                     "tokens": {"a": {"x": 500, "y": -1}, "b": "lixo"},
                                     "cell_size": "nan"})
-    assert board["cols"] == 20 and board["rows"] == 1
-    assert board["revealed"] == []  # rows virou 1: "1,1" caiu fora da grade
+    assert (board["cols"], board["rows"]) == (20, 14)  # lixo volta ao padrão
+    assert board["revealed"] == ["1,1"]                # "x" e "99,99" saem
     assert board["tokens"] == {"a": {"x": 19, "y": 0, "hidden": False, "size": 1}}
+    assert board["fog_layer"] == {"base": "cover", "strokes": []}
 
 
 def test_exportacao_leva_o_mapa(mesa):
@@ -350,3 +358,84 @@ def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
     assert ok.status_code == 200
     ok.close()
     assert mesa.user("intruso").get(visto["map_url"]).status_code == 403
+
+
+# --------------------------------------------- névoa pintada (traços livres)
+def pincelar(client, base, reveal, points, size=1.0):
+    return client.post(base + "/mapa/nevoa",
+                       json={"reveal": reveal, "size": size, "points": points})
+
+
+def test_nevoa_pintada_revela_so_o_que_o_pincel_passou(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 5, "y": 5})
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 2"], "x": 12, "y": 5})
+    assert ana.get(base + "/mapa").get_json()["tokens"] == []
+
+    # Um traço redondo em volta do Ghoul 1 (centro do quadrado 5,5).
+    state = pincelar(mestre, base, True, [[5.5, 5.5]], size=1.2).get_json()
+    assert state["fog_layer"]["strokes"][0]["mode"] == "reveal"
+    assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
+
+    # Cobrir de novo por cima: o último traço manda.
+    pincelar(mestre, base, False, [[5.5, 5.5]], size=1.5)
+    assert ana.get(base + "/mapa").get_json()["tokens"] == []
+
+    # Traço comprido passando pelos dois.
+    pincelar(mestre, base, True, [[5.5, 5.5], [8, 5.5], [12.5, 5.5]], size=0.6)
+    assert sorted(t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]) == ["Ghoul 1", "Ghoul 2"]
+
+    # "Cobrir tudo" limpa a pintura.
+    mestre.post(base + "/mapa/nevoa", json={"all": True, "reveal": False})
+    state = mestre.get(base + "/mapa").get_json()
+    assert state["fog_layer"] == {"base": "cover", "strokes": []}
+    assert ana.get(base + "/mapa").get_json()["tokens"] == []
+
+
+def test_nevoa_antiga_por_quadrados_continua_valendo(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 3, "y": 3})
+    mestre.post(base + "/mapa/nevoa", json={"cells": [[3, 3]], "reveal": True})
+    assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
+    pincelar(mestre, base, False, [[3.5, 3.5]], size=1.0)  # pincel cobre por cima
+    assert ana.get(base + "/mapa").get_json()["tokens"] == []
+
+
+def test_limite_de_pintura(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre = mesa.user("mestre")
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    linha = [[x / 10.0, 1] for x in range(400)]
+    for _ in range(40):  # 40 × 400 pontos passa do teto de 12.000
+        response = pincelar(mestre, base, True, linha)
+        if response.status_code == 400:
+            assert "pintura demais" in response.get_json()["message"]
+            break
+    else:
+        raise AssertionError("o limite de pintura não foi aplicado")
+
+
+def test_imagem_recortada_segue_o_pincel(mesa, app):
+    import io
+    from PIL import Image
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post("/campanhas/%d/mapas" % camp, data={
+        "title": "Sala redonda", "visibility": "mestre", "file": (_png(200, 200, (250, 250, 250)), "s.png")},
+        content_type="multipart/form-data")
+    with app.app_context():
+        asset_id = Asset.query.filter_by(title="Sala redonda").one().id
+    mestre.post(base + "/mapa/configurar", json={"map_id": asset_id, "cols": 10, "rows": 10, "fog": True})
+    pincelar(mestre, base, True, [[5, 5]], size=2)  # círculo no meio
+
+    url = ana.get(base + "/mapa").get_json()["map_url"]
+    response = ana.get(url)
+    image = Image.open(io.BytesIO(response.data)).convert("RGB")
+    response.close()
+    assert min(image.getpixel((100, 100))) > 200   # meio: revelado
+    assert max(image.getpixel((100, 20))) < 30     # acima do círculo: coberto
+    assert max(image.getpixel((10, 10))) < 30      # canto: coberto

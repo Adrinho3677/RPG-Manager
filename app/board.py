@@ -4,12 +4,16 @@
 O estado fica em Encounter.board (JSON):
 
     map_id        Asset (kind "mapa") da campanha usado de fundo, ou None
-    cols, rows    tamanho da grade em quadrados
+    cols, rows    tamanho da grade em quadrados (aceita quebrado: 18,5 × 14,35 —
+                  a última coluna/linha fica parcial, como no mapa de verdade)
     grid          mostrar as linhas da grade
     cell_size     quanto vale um quadrado (1.5) ...
     cell_unit     ... e em que unidade ("m")
     fog           névoa de guerra ligada
-    revealed      quadrados revelados, como "x,y"
+    revealed      quadrados revelados (névoa antiga, por quadrado) — "x,y"
+    fog_layer     névoa pintada à mão: {"base": "cover"|"reveal", "strokes": [...]},
+                  cada traço {"mode": "reveal"|"cover", "size": raio em quadrados,
+                  "points": [[x, y], ...]} — salas redondas sem virar escadinha
     players_move  jogadores podem mover as próprias fichas
     tokens        {uid do combatente: {"x", "y", "hidden"}}
     areas         áreas de efeito [{id, shape (circle|cone|line), ox, oy, angle, size,
@@ -32,15 +36,17 @@ from flask import url_for
 from app.utils import to_float, to_int
 
 MAX_SIDE = 60
+MIN_SIDE = 0.5
 DEFAULTS = {
     "map_id": None,
-    "cols": 20,
-    "rows": 14,
+    "cols": 20.0,
+    "rows": 14.0,
     "grid": True,
     "cell_size": 1.5,
     "cell_unit": "m",
     "fog": False,
     "revealed": [],
+    "fog_layer": {"base": "cover", "strokes": []},
     "players_move": True,
     "tokens": {},
     "areas": [],
@@ -49,6 +55,10 @@ DEFAULTS = {
     "version": 0,
 }
 MAX_TOKEN_SIZE = 4   # criaturas grandes ocupam 2×2, 3×3 ou 4×4 quadrados
+MAX_STROKES = 500          # traços de névoa guardados
+MAX_STROKE_POINTS = 400    # pontos de um traço
+MAX_TOTAL_POINTS = 12000   # soma de todos: o JSON do mapa não pode crescer sem fim
+MAX_BRUSH = 12             # raio do pincel, em quadrados
 MAX_HISTORY = 30
 MAX_AREAS = 30
 MAX_MARKERS = 80
@@ -70,13 +80,28 @@ def _cell(x, y):
     return "%d,%d" % (x, y)
 
 
+def cells_across(value):
+    """Quantos quadrados existem numa medida quebrada (18,5 → 19: o último é parcial)."""
+    import math
+    return max(1, int(math.ceil(float(value) - 1e-9)))
+
+
+def _side(value, fallback):
+    """Lado da grade: número quebrado vale (18,5); lixo ou zero volta ao padrão."""
+    size = to_float(value, 0)
+    if not MIN_SIDE <= size <= MAX_SIDE:
+        size = fallback
+    return round(size, 3)
+
+
 def normalize(raw):
     """Sempre devolve um tabuleiro completo e dentro dos limites."""
     raw = raw if isinstance(raw, dict) else {}
     board = dict(DEFAULTS)
     board["map_id"] = to_int(raw.get("map_id"), 0) or None
-    board["cols"] = _clamp(to_int(raw.get("cols"), DEFAULTS["cols"]), 1, MAX_SIDE)
-    board["rows"] = _clamp(to_int(raw.get("rows"), DEFAULTS["rows"]), 1, MAX_SIDE)
+    board["cols"] = _side(raw.get("cols"), DEFAULTS["cols"])
+    board["rows"] = _side(raw.get("rows"), DEFAULTS["rows"])
+    wide, high = cells_across(board["cols"]), cells_across(board["rows"])
     board["grid"] = bool(raw.get("grid", True))
     size = to_float(raw.get("cell_size"), DEFAULTS["cell_size"])
     board["cell_size"] = size if 0 < size <= 1000 else DEFAULTS["cell_size"]
@@ -92,9 +117,10 @@ def normalize(raw):
             x, y = (int(part) for part in str(item).split(","))
         except ValueError:
             continue
-        if 0 <= x < board["cols"] and 0 <= y < board["rows"]:
+        if 0 <= x < wide and 0 <= y < high:
             revealed.add(_cell(x, y))
     board["revealed"] = sorted(revealed)
+    board["fog_layer"] = _clean_layer(raw.get("fog_layer"))
 
     tokens = {}
     for uid, pos in (raw.get("tokens") or {}).items():
@@ -102,8 +128,8 @@ def normalize(raw):
             continue
         size = _clamp(to_int(pos.get("size"), 1), 1, MAX_TOKEN_SIZE)
         tokens[str(uid)[:16]] = {
-            "x": _clamp(to_int(pos.get("x"), 0), 0, max(0, board["cols"] - size)),
-            "y": _clamp(to_int(pos.get("y"), 0), 0, max(0, board["rows"] - size)),
+            "x": _clamp(to_int(pos.get("x"), 0), 0, max(0, wide - size)),
+            "y": _clamp(to_int(pos.get("y"), 0), 0, max(0, high - size)),
             "hidden": bool(pos.get("hidden")),
             "size": size,
         }
@@ -139,8 +165,8 @@ def normalize(raw):
             continue
         markers[str(mid)[:16]] = {
             "type": marker["type"],
-            "x": _clamp(to_int(marker.get("x"), 0), 0, board["cols"] - 1),
-            "y": _clamp(to_int(marker.get("y"), 0), 0, board["rows"] - 1),
+            "x": _clamp(to_int(marker.get("x"), 0), 0, wide - 1),
+            "y": _clamp(to_int(marker.get("y"), 0), 0, high - 1),
             "label": str(marker.get("label") or "").strip()[:60],
             "hidden": bool(marker.get("hidden", True)),
         }
@@ -158,7 +184,11 @@ def configure(board, payload, map_ids):
         board["map_id"] = map_id
     for key in ("cols", "rows"):
         if key in payload:
-            board[key] = _clamp(to_int(payload.get(key), board[key]), 1, MAX_SIDE)
+            size = to_float(payload.get(key), 0)
+            if not MIN_SIDE <= size <= MAX_SIDE:
+                raise BoardError("A grade vai de %s a %d quadrados (pode ser quebrado: 18,5)."
+                                 % (str(MIN_SIDE).replace(".", ","), MAX_SIDE))
+            board[key] = round(size, 3)
     if "cell_size" in payload:
         size = to_float(payload.get("cell_size"), 0)
         if not 0 < size <= 1000:
@@ -189,7 +219,9 @@ def move(board, uid, x, y, by=0):
     else:
         x, y = to_int(x, -1), to_int(y, -1)
         size = (current or {}).get("size", 1)
-        if not (0 <= x <= board["cols"] - size and 0 <= y <= board["rows"] - size):
+        # O último quadrado de uma grade quebrada (18,5) é parcial, mas existe.
+        if not (0 <= x <= cells_across(board["cols"]) - size
+                and 0 <= y <= cells_across(board["rows"]) - size):
             raise BoardError("Fora do mapa.")
         board["tokens"][uid] = {"x": x, "y": y, "hidden": bool((current or {}).get("hidden")),
                                 "size": size}
@@ -217,8 +249,8 @@ def undo(board, user_id, is_master, allowed):
         else:
             size = (current or {}).get("size", 1)
             board["tokens"][entry["uid"]] = {
-                "x": _clamp(entry["fx"], 0, max(0, board["cols"] - size)),
-                "y": _clamp(entry["fy"], 0, max(0, board["rows"] - size)),
+                "x": _clamp(entry["fx"], 0, max(0, cells_across(board["cols"]) - size)),
+                "y": _clamp(entry["fy"], 0, max(0, cells_across(board["rows"]) - size)),
                 "hidden": bool((current or {}).get("hidden")), "size": size}
         return board
     raise BoardError("Nada para desfazer.")
@@ -237,8 +269,8 @@ def set_size(board, uid, size):
         raise BoardError("Essa ficha não está no mapa.")
     size = _clamp(to_int(size, 1), 1, MAX_TOKEN_SIZE)
     token["size"] = size
-    token["x"] = _clamp(token["x"], 0, max(0, board["cols"] - size))
-    token["y"] = _clamp(token["y"], 0, max(0, board["rows"] - size))
+    token["x"] = _clamp(token["x"], 0, max(0, cells_across(board["cols"]) - size))
+    token["y"] = _clamp(token["y"], 0, max(0, cells_across(board["rows"]) - size))
     return board
 
 
@@ -252,24 +284,98 @@ def parse_speed(text, cell_size):
     return round(value / cell_size, 2) if value > 0 else None
 
 
-def paint_fog(board, cells, reveal):
-    """Revela (ou cobre de novo) uma lista de quadrados [[x, y], ...]."""
+def _clean_layer(raw):
+    """Camada de névoa válida (traços dentro dos limites)."""
+    raw = raw if isinstance(raw, dict) else {}
+    strokes, total = [], 0
+    for item in (raw.get("strokes") or [])[-MAX_STROKES:]:
+        if not isinstance(item, dict) or item.get("mode") not in ("reveal", "cover"):
+            continue
+        points = []
+        for point in (item.get("points") or [])[:MAX_STROKE_POINTS]:
+            try:
+                points.append([round(float(point[0]), 3), round(float(point[1]), 3)])
+            except (TypeError, ValueError, IndexError):
+                continue
+        if not points or total + len(points) > MAX_TOTAL_POINTS:
+            continue
+        total += len(points)
+        size = to_float(item.get("size"), 1)
+        strokes.append({"mode": item["mode"], "size": min(MAX_BRUSH, max(0.05, size)),
+                        "points": points})
+    base = "reveal" if raw.get("base") == "reveal" else "cover"
+    return {"base": base, "strokes": strokes}
+
+
+def paint_fog(board, payload):
+    """Guarda um traço de pincel (ou uma lista de quadrados, da névoa antiga)."""
+    layer = board["fog_layer"]
+    mode = "reveal" if payload.get("reveal") else "cover"
+
+    points = []
+    for point in (payload.get("points") or [])[:MAX_STROKE_POINTS]:
+        try:
+            points.append([round(float(point[0]), 3), round(float(point[1]), 3)])
+        except (TypeError, ValueError, IndexError):
+            continue
+    if points:
+        if sum(len(s["points"]) for s in layer["strokes"]) + len(points) > MAX_TOTAL_POINTS:
+            raise BoardError("A névoa deste mapa já tem pintura demais. Use “Cobrir tudo” "
+                             "(ou “Revelar tudo”) e pinte de novo.")
+        size = min(MAX_BRUSH, max(0.05, to_float(payload.get("size"), 1)))
+        layer["strokes"].append({"mode": mode, "size": size, "points": points})
+        del layer["strokes"][:-MAX_STROKES]
+        return board
+
+    # Névoa antiga (quadrados inteiros) — ainda usada por quem pinta com o teclado.
     revealed = set(board["revealed"])
-    for item in (cells or [])[:MAX_SIDE * MAX_SIDE]:
+    wide, high = cells_across(board["cols"]), cells_across(board["rows"])
+    for item in (payload.get("cells") or [])[:MAX_SIDE * MAX_SIDE]:
         try:
             x, y = int(item[0]), int(item[1])
         except (TypeError, ValueError, IndexError):
             continue
-        if 0 <= x < board["cols"] and 0 <= y < board["rows"]:
-            (revealed.add if reveal else revealed.discard)(_cell(x, y))
+        if 0 <= x < wide and 0 <= y < high:
+            (revealed.add if mode == "reveal" else revealed.discard)(_cell(x, y))
     board["revealed"] = sorted(revealed)
     return board
 
 
 def fog_all(board, reveal):
-    board["revealed"] = ([_cell(x, y) for x in range(board["cols"]) for y in range(board["rows"])]
-                         if reveal else [])
+    """Revela ou cobre o mapa inteiro: limpa a pintura e começa de novo."""
+    board["revealed"] = []
+    board["fog_layer"] = {"base": "reveal" if reveal else "cover", "strokes": []}
     return board
+
+
+def _near_stroke(stroke, x, y):
+    """O ponto está dentro do traço (distância até a linha ≤ raio do pincel)?"""
+    radius = stroke["size"]
+    points = stroke["points"]
+    for index, (px, py) in enumerate(points):
+        dx, dy = x - px, y - py
+        if dx * dx + dy * dy <= radius * radius:
+            return True
+        if index + 1 < len(points):
+            qx, qy = points[index + 1]
+            vx, vy = qx - px, qy - py
+            length = vx * vx + vy * vy
+            if length:
+                t = max(0.0, min(1.0, (dx * vx + dy * vy) / length))
+                ox, oy = x - (px + t * vx), y - (py + t * vy)
+                if ox * ox + oy * oy <= radius * radius:
+                    return True
+    return False
+
+
+def is_revealed(board, x, y):
+    """Aquele ponto (em quadrados) está revelado? Último traço por cima manda."""
+    for stroke in reversed(board["fog_layer"]["strokes"]):
+        if _near_stroke(stroke, x, y):
+            return stroke["mode"] == "reveal"
+    if _cell(int(x), int(y)) in board["revealed"]:
+        return True
+    return board["fog_layer"]["base"] == "reveal"
 
 
 def add_area(board, payload, user):
@@ -316,7 +422,7 @@ def change_marker(board, payload):
         if len(board["markers"]) >= MAX_MARKERS:
             raise BoardError("Marcadores demais neste mapa.")
         x, y = to_int(payload.get("x"), -1), to_int(payload.get("y"), -1)
-        if not (0 <= x < board["cols"] and 0 <= y < board["rows"]):
+        if not (0 <= x < cells_across(board["cols"]) and 0 <= y < cells_across(board["rows"])):
             raise BoardError("Fora do mapa.")
         board["markers"][secrets.token_hex(4)] = {
             "type": payload["type"], "x": x, "y": y, "hidden": True,
@@ -330,7 +436,7 @@ def change_marker(board, payload):
     elif op == "update":
         if "x" in payload or "y" in payload:
             x, y = to_int(payload.get("x"), marker["x"]), to_int(payload.get("y"), marker["y"])
-            if not (0 <= x < board["cols"] and 0 <= y < board["rows"]):
+            if not (0 <= x < cells_across(board["cols"]) and 0 <= y < cells_across(board["rows"])):
                 raise BoardError("Fora do mapa.")
             marker.update(x=x, y=y)
         if "hidden" in payload:
@@ -346,7 +452,10 @@ def change_marker(board, payload):
 
 def fog_key(board):
     """Resumo do que está revelado: muda a URL da imagem recortada."""
-    raw = "%s|%d|%d|%s" % (board["map_id"], board["cols"], board["rows"], ";".join(board["revealed"]))
+    import json
+    raw = "%s|%s|%s|%s|%s" % (board["map_id"], board["cols"], board["rows"],
+                              ";".join(board["revealed"]),
+                              json.dumps(board["fog_layer"], sort_keys=True))
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -392,8 +501,12 @@ def view(encounter, state, user, is_master, maps):
         sheets = {ch.id: ch for ch in Character.query.filter(
             Character.id.in_(ids), Character.campaign_id == encounter.campaign_id)}
 
-    revealed = set(board["revealed"])
     tokens, bench = [], []
+
+    def lit(pos, size=1):
+        """Alguma parte da ficha está na luz?"""
+        return any(is_revealed(board, cx + 0.5, cy + 0.5)
+                   for cx, cy in footprint({"x": pos["x"], "y": pos["y"], "size": size}))
     for index, c in enumerate(combatants):
         uid = c.get("uid")
         if not uid:
@@ -406,7 +519,7 @@ def view(encounter, state, user, is_master, maps):
             if hidden and not mine:
                 continue
             if (pos and board["fog"] and c.get("kind") != "pj" and not mine
-                    and not any(_cell(x, y) in revealed for x, y in footprint(pos))):
+                    and not lit(pos, pos.get("size", 1))):
                 continue
         portrait = sheet or sheets.get(c.get("source_id"))
         item = {
@@ -438,7 +551,7 @@ def view(encounter, state, user, is_master, maps):
     markers = []
     for mid, marker in board["markers"].items():
         if not is_master and (marker["hidden"] or (
-                board["fog"] and _cell(marker["x"], marker["y"]) not in revealed)):
+                board["fog"] and not is_revealed(board, marker["x"] + 0.5, marker["y"] + 0.5))):
             continue
         item = dict(marker, id=mid, icon=MARKER_TYPES[marker["type"]])
         if not is_master:
@@ -466,6 +579,8 @@ def view(encounter, state, user, is_master, maps):
         "fog": board["fog"],
         "players_move": board["players_move"],
         "revealed": board["revealed"] if board["fog"] else [],
+        "fog_layer": board["fog_layer"] if board["fog"] else {"base": "reveal", "strokes": []},
+        "brush": MAX_BRUSH,
         "tokens": tokens,
         "bench": bench,
         "markers": markers,

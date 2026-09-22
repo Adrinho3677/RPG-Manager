@@ -1385,12 +1385,10 @@ def board_fog(campaign_id, encounter_id):
     campaign = get_campaign(campaign_id, master_only=True)
     encounter = get_encounter(campaign, encounter_id)
     payload = request.get_json(silent=True) or {}
-    reveal = bool(payload.get("reveal"))
     if payload.get("all"):
+        reveal = bool(payload.get("reveal"))
         return board_change(campaign, encounter, lambda b: board_helper.fog_all(b, reveal))
-    cells = payload.get("cells") if isinstance(payload.get("cells"), list) else []
-    return board_change(campaign, encounter,
-                        lambda b: board_helper.paint_fog(b, cells, reveal))
+    return board_change(campaign, encounter, lambda b: board_helper.paint_fog(b, payload))
 
 
 # --------------------------------------------------------------- rolagens da mesa

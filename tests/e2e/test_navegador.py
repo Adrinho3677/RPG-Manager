@@ -206,3 +206,60 @@ def test_painel_de_rolagens_recolhido_nao_cobre_a_tela(table):
     panel.locator("header").click()
     expect(panel.locator(".whisper-box")).to_be_visible()
 
+
+
+def test_nevoa_pintada_com_o_mouse(table):
+    """O pincel manda o traço ao servidor e o jogador só vê o que foi pintado."""
+    mestre, ana, camp = table
+    page, card = new_encounter(mestre, camp)
+    panel = card.locator("[data-board]")
+
+    # Grade quebrada e névoa ligada, pela tela de configurar.
+    panel.locator(".board-config summary").click()
+    panel.locator("[data-board-config] [name=cols]").fill("18,5")
+    panel.locator("[data-board-config] [name=rows]").fill("12,4")
+    panel.locator("[data-board-config] [name=rows]").press("Tab")
+    panel.locator("[data-board-config] [name=fog]").check()
+    expect(panel.locator("[data-board-mode=reveal]")).to_be_visible()
+
+    # O número do combate muda conforme os testes anteriores: leia da própria página.
+    encounter_id = card.get_attribute("data-encounter-id")
+    estado = lambda: page.evaluate(
+        "url => fetch(url).then(r => r.json())",
+        "/campanhas/%d/combate/%s/mapa" % (camp, encounter_id))
+    assert [estado()["cols"], estado()["rows"]] == [18.5, 12.4]
+
+    # Põe o ghoul no mapa e pinta um traço longe dele.
+    panel.locator(".bench-token", has_text="Ghoul 1").click()
+    surface = panel.locator("[data-board-surface]")
+    box = surface.bounding_box()
+    cell = box["width"] / 18.5
+    surface.click(position={"x": cell * 3.5, "y": cell * 3.5})
+    expect(panel.locator(".board-tokens .token")).to_have_count(1)
+
+    panel.locator("[data-board-mode=reveal]").click()
+    # Mede o mapa na hora e pinta perto do topo: coordenada do mouse é da janela,
+    # e pôr a ficha mudou a altura da barra acima do mapa.
+    surface.scroll_into_view_if_needed()
+    box = surface.bounding_box()
+    page.mouse.move(box["x"] + cell * 12, box["y"] + cell * 2)
+    page.mouse.down()
+    for step in range(6):
+        page.mouse.move(box["x"] + cell * (12 + step * 0.4), box["y"] + cell * (2 + step * 0.3))
+    page.mouse.up()
+    page.wait_for_timeout(1200)
+    layer = estado()["fog_layer"]
+    assert layer["base"] == "cover" and len(layer["strokes"]) == 1
+    assert layer["strokes"][0]["mode"] == "reveal" and len(layer["strokes"][0]["points"]) > 1
+
+    # O ghoul está fora do traço: a jogadora não o vê.
+    player = ana.go("/campanhas/%d/combate" % camp)
+    expect(player.locator("[data-board] .board-tokens .token")).to_have_count(0, timeout=LIVE)
+
+    # Pintando em cima dele, aparece.
+    box = surface.bounding_box()
+    page.mouse.move(box["x"] + cell * 4, box["y"] + cell * 3.5)
+    page.mouse.down()
+    page.mouse.move(box["x"] + cell * 4.2, box["y"] + cell * 3.6)
+    page.mouse.up()
+    expect(player.locator("[data-board] .board-tokens .token")).to_have_count(1, timeout=LIVE)

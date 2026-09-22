@@ -2,8 +2,9 @@
 """Imagem do mapa com a névoa "queimada" nela, para os jogadores.
 
 Pintar a névoa por cima no navegador não guarda segredo nenhum: a imagem
-inteira já foi baixada. Aqui o servidor gera uma cópia com os quadrados não
-revelados cobertos de preto, e é só essa cópia que o jogador recebe.
+inteira já foi baixada. Aqui o servidor gera uma cópia com a névoa "queimada"
+— os mesmos traços de pincel que o mestre pintou —, e é só essa cópia que o
+jogador recebe.
 
 As cópias ficam em UPLOAD_DIR/nevoa/, com o resumo do que está revelado no
 nome: revelar de novo o mesmo conjunto reaproveita o arquivo. Guarda poucas
@@ -42,16 +43,29 @@ def masked_path(asset, board, key):
     image.thumbnail((MAX_SIDE_PX, MAX_SIDE_PX))
     width, height = image.size
     cell_w, cell_h = width / float(board["cols"]), height / float(board["rows"])
-    revealed = set(board["revealed"])
-    draw = ImageDraw.Draw(image)
-    for y in range(board["rows"]):
-        for x in range(board["cols"]):
-            if "%d,%d" % (x, y) in revealed:
-                continue
-            # Arredonda para fora: nenhuma fresta de 1 pixel entre quadrados.
-            draw.rectangle([math.floor(x * cell_w), math.floor(y * cell_h),
-                            math.ceil((x + 1) * cell_w), math.ceil((y + 1) * cell_h)],
-                           fill=FOG_COLOR)
+
+    # Máscara: 255 = coberto pela névoa, 0 = revelado. Mesma conta do navegador.
+    layer = board["fog_layer"]
+    mask = Image.new("L", image.size, 255 if layer["base"] == "cover" else 0)
+    draw = ImageDraw.Draw(mask)
+    for cell in board["revealed"]:          # névoa antiga, por quadrado
+        try:
+            x, y = (int(part) for part in cell.split(","))
+        except ValueError:
+            continue
+        draw.rectangle([math.floor(x * cell_w), math.floor(y * cell_h),
+                        math.ceil((x + 1) * cell_w), math.ceil((y + 1) * cell_h)], fill=0)
+    for stroke in layer["strokes"]:         # pincel: traços com ponta redonda
+        tone = 0 if stroke["mode"] == "reveal" else 255
+        radius = max(1.0, stroke["size"] * (cell_w + cell_h) / 2.0)
+        points = [(px * cell_w, py * cell_h) for px, py in stroke["points"]]
+        if len(points) > 1:
+            draw.line(points, fill=tone, width=int(round(radius * 2)), joint="curve")
+        for px, py in points:
+            draw.ellipse([px - radius, py - radius, px + radius, py + radius], fill=tone)
+
+    image = Image.composite(Image.new("RGB", image.size, FOG_COLOR), image, mask)
+
     temp = target + ".tmp"
     image.save(temp, "JPEG", quality=85)
     os.replace(temp, target)  # quem pedir junto nunca lê um arquivo pela metade

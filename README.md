@@ -86,13 +86,17 @@ pode fazer **rolagens secretas**.
   rastreador como peças. Arraste (ou toque na ficha e depois no quadrado — melhor no celular);
   enquanto arrasta, mostra a distância ("5 quadrados (7,5 m)"). Todos veem os movimentos ao
   vivo. O mestre:
-  - ajusta a grade à imagem, a escala do quadrado e se jogadores movem as próprias fichas;
+  - ajusta a grade à imagem, a escala do quadrado e se jogadores movem as próprias fichas.
+    A grade aceita **número quebrado** (18,5 × 14,35): o último quadrado de cada borda fica
+    parcial, como no mapa de verdade, e "Ajustar à imagem" usa a proporção exata;
   - **esconde fichas** — some para os jogadores no mapa *e* na ordem de iniciativa;
-  - pinta a **névoa de guerra** ("Revelar" / "Cobrir"). A névoa é **de verdade**: o servidor
-    recorta a imagem e o jogador recebe só uma cópia com o que não foi revelado coberto de
-    preto — nem abrindo o arquivo da imagem ele vê o resto. Inimigos e marcadores debaixo dela
-    também não chegam ao navegador. O grupo aparece sempre. (Deixe o mapa *escondido* na
-    galeria: se ele estiver visível lá, o jogador abre o original pela galeria — a tela avisa.)
+  - **pinta a névoa de guerra** com um pincel de tamanho ajustável ("Revelar" / "Cobrir"):
+    traço livre, com ponta redonda, que acompanha sala redonda, corredor torto e caverna sem
+    virar escadinha de quadrados. Pintar por cima corrige; "Revelar tudo" e "Cobrir tudo"
+    recomeçam. A névoa é **de verdade**: o servidor desenha os mesmos traços na imagem e o
+    jogador recebe só essa cópia — nem abrindo o arquivo ele vê o resto. Inimigos e marcadores
+    na parte escura também não chegam ao navegador dele. O grupo aparece sempre. (Deixe o mapa
+    *escondido* na galeria: se estiver visível lá, o jogador abre o original por lá — a tela avisa.)
   - põe **marcadores** — 🚪 porta, ⚠️ armadilha, 💰 tesouro, 🎯 alvo, 📌 nota —, que começam
     escondidos e ele revela quando quiser;
   - usa a **tela cheia** para mostrar o mapa numa TV na mesa.

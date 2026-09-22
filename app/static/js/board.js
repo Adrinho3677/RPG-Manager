@@ -38,6 +38,9 @@
     return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value));
   }
 
+  // Grade quebrada (18,5 × 14,35): o último quadrado de cada borda fica parcial.
+  function across(value) { return Math.max(1, Math.ceil(value - 1e-9)); }
+
   function formatNumber(value) {
     return String(Math.round(value * 100) / 100).replace(".", ",");
   }
@@ -112,6 +115,7 @@
     var sizeInput = panel.querySelector("[data-area-size]");
     var areaShapeNow = null;   // forma escolhida na barra (modo "area")
     var aiming = null;         // área sendo mirada agora
+    var painting = null;       // traço de névoa sendo pintado agora
     var selectedMarker = null; // id do marcador selecionado (mestre)
     var scroller = panel.querySelector("[data-board-scroll]");
     var boardEl = panel.querySelector("[data-board-surface]");
@@ -132,6 +136,7 @@
     var paint = null;         // pincel de névoa em andamento
     var busy = 0;             // pedidos em andamento: não sobrescreve a tela
     var configTimer = null;
+    var configDirty = false;   // há mudança digitada ainda não enviada
     var afterSend = function () {};
 
     function setStatus(text, kind) {
@@ -165,8 +170,8 @@
       var reach = Math.floor(token.speed + 1e-6), size = token.size || 1;
       ctx.fillStyle = "rgba(63, 178, 127, .22)";
       ctx.strokeStyle = "rgba(63, 178, 127, .55)";
-      for (var y = 0; y < state.rows; y++) {
-        for (var x = 0; x < state.cols; x++) {
+      for (var y = 0; y < across(state.rows); y++) {
+        for (var x = 0; x < across(state.cols); x++) {
           var dx = x < token.x ? token.x - x : Math.max(0, x - (token.x + size - 1));
           var dy = y < token.y ? token.y - y : Math.max(0, y - (token.y + size - 1));
           if (Math.max(dx, dy) <= reach && (dx || dy)) {
@@ -174,6 +179,47 @@
           }
         }
       }
+    }
+
+    /* Névoa pintada: monta uma máscara (branco = coberto) com os traços do
+       pincel e usa essa máscara para pintar a cor da névoa. Traço com ponta
+       redonda acompanha sala redonda; o servidor desenha igualzinho na imagem
+       que o jogador recebe (app/fogimage.py). */
+    function fogMask(width, height) {
+      var mask = document.createElement("canvas");
+      mask.width = Math.max(1, Math.round(width));
+      mask.height = Math.max(1, Math.round(height));
+      var ctx = mask.getContext("2d");
+      var layer = state.fog_layer || { base: "cover", strokes: [] };
+      if (layer.base !== "reveal") {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      (state.revealed || []).forEach(function (key) {   // névoa antiga, por quadrado
+        var parts = key.split(",");
+        ctx.clearRect(parts[0] * cell, parts[1] * cell, cell, cell);
+      });
+      (layer.strokes || []).concat(painting ? [painting] : []).forEach(function (stroke) {
+        ctx.globalCompositeOperation = stroke.mode === "reveal" ? "destination-out" : "source-over";
+        ctx.strokeStyle = ctx.fillStyle = "#fff";
+        ctx.lineWidth = Math.max(1, stroke.size * 2 * cell);
+        ctx.beginPath();
+        stroke.points.forEach(function (point, index) {
+          var px = point[0] * cell, py = point[1] * cell;
+          if (index) ctx.lineTo(px, py);
+          else ctx.moveTo(px, py);
+        });
+        if (stroke.points.length === 1) {
+          var only = stroke.points[0];
+          ctx.arc(only[0] * cell, only[1] * cell, stroke.size * cell, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.stroke();
+        }
+      });
+      return mask;
     }
 
     function drawFog() {
@@ -187,16 +233,13 @@
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       if (!state.fog) return;
-      var open = {};
-      state.revealed.forEach(function (key) { open[key] = true; });
+      ctx.drawImage(fogMask(width, height), 0, 0, width, height);
       // Mestre enxerga através da névoa (para saber o que está escondido);
-      // jogadores veem o quadrado fechado.
-      ctx.fillStyle = state.is_master ? "rgba(6, 5, 12, .55)" : "rgb(10, 9, 16)";
-      for (var y = 0; y < state.rows; y++) {
-        for (var x = 0; x < state.cols; x++) {
-          if (!open[x + "," + y]) ctx.fillRect(x * cell, y * cell, cell, cell);
-        }
-      }
+      // o jogador vê fechado.
+      ctx.globalCompositeOperation = "source-in";
+      ctx.fillStyle = state.is_master ? "rgba(6, 5, 12, .62)" : "rgb(10, 9, 16)";
+      ctx.fillRect(0, 0, width, height);
+      ctx.globalCompositeOperation = "source-over";
     }
 
     function tokenNode(token) {
@@ -473,7 +516,10 @@
 
     /* ------------------------------------------------------ configuração */
     function syncConfig() {
-      if (!config || !state.is_master) return;
+      // Enquanto houver coisa digitada ainda não enviada, a resposta do
+      // servidor não pode reescrever os campos: o mestre veria o que digitou
+      // voltar ao valor antigo no meio da digitação.
+      if (!config || !state.is_master || configDirty) return;
       var active = document.activeElement;
       function set(name, value) {
         var input = config.querySelector("[name=" + name + "]");
@@ -497,8 +543,8 @@
         }
         select.value = wanted;
       }
-      set("cols", state.cols);
-      set("rows", state.rows);
+      set("cols", formatNumber(state.cols));
+      set("rows", formatNumber(state.rows));
       set("cell_size", formatNumber(state.cell_size));
       set("cell_unit", state.cell_unit);
       set("grid", state.grid);
@@ -523,9 +569,13 @@
 
     if (config) {
       var onConfig = function (event) {
+        configDirty = true;
         clearTimeout(configTimer);
         var delay = event.type === "change" ? 0 : 600;
-        configTimer = setTimeout(function () { send(urls.config, readConfig()); }, delay);
+        configTimer = setTimeout(function () {
+          configDirty = false;   // o que vai agora é exatamente o que está na tela
+          send(urls.config, readConfig());
+        }, delay);
       };
       config.addEventListener("input", onConfig);
       config.addEventListener("change", onConfig);
@@ -538,6 +588,7 @@
       state.tokens = state.tokens || [];
       state.bench = state.bench || [];
       state.revealed = state.revealed || [];
+      state.fog_layer = state.fog_layer || { base: "cover", strokes: [] };
       state.markers = state.markers || [];
       state.areas = state.areas || [];
       if (selected && !findToken(selected)) selected = null;
@@ -575,7 +626,7 @@
       var rect = boardEl.getBoundingClientRect();
       var x = Math.floor((event.clientX - rect.left) / cell);
       var y = Math.floor((event.clientY - rect.top) / cell);
-      if (x < 0 || y < 0 || x >= state.cols || y >= state.rows) return null;
+      if (x < 0 || y < 0 || x >= across(state.cols) || y >= across(state.rows)) return null;
       return { x: x, y: y };
     }
 
@@ -583,7 +634,7 @@
       var rect = boardEl.getBoundingClientRect();
       var x = (event.clientX - rect.left) / cell, y = (event.clientY - rect.top) / cell;
       if (snap) { x = Math.round(x * 2) / 2; y = Math.round(y * 2) / 2; }  // centro ou quina
-      return { x: Math.max(0, Math.min(state.cols, x)), y: Math.max(0, Math.min(state.rows, y)) };
+      return { x: Math.max(0, Math.min(state.cols, x)), y: Math.max(0, Math.min(state.rows, y)) };  // em quadrados
     }
 
     function aimInfo() {
@@ -614,8 +665,8 @@
       var token = findToken(selected);
       if (!token || !token.can_move) return false;
       var size = token.size || 1;
-      target = { x: Math.max(0, Math.min(state.cols - size, target.x)),
-                 y: Math.max(0, Math.min(state.rows - size, target.y)) };
+      target = { x: Math.max(0, Math.min(across(state.cols) - size, target.x)),
+                 y: Math.max(0, Math.min(across(state.rows) - size, target.y)) };
       if (token.x === target.x && token.y === target.y) return true;
       token.x = target.x;  // otimista: a resposta do servidor confirma
       token.y = target.y;
@@ -626,27 +677,18 @@
       return true;
     }
 
-    function paintLine(target) {
-      // Movimento rápido pula quadrados entre um evento e outro: pinta a reta
-      // inteira desde o último quadrado pintado.
-      var from = paint.last || target;
-      var steps = Math.max(Math.abs(target.x - from.x), Math.abs(target.y - from.y));
-      for (var i = 1; i <= steps; i++) {
-        paintCell({ x: Math.round(from.x + (target.x - from.x) * i / steps),
-                    y: Math.round(from.y + (target.y - from.y) * i / steps) });
-      }
-      paintCell(target);
-      paint.last = target;
+    function brushSize() {
+      var input = panel.querySelector("[data-brush-size]");
+      var value = input ? parseFloat(String(input.value).replace(",", ".")) : 1.5;
+      return Math.max(0.1, Math.min(state.brush || 12, value || 1.5));
     }
 
-    function paintCell(target) {
-      var key = target.x + "," + target.y;
-      if (paint.seen[key]) return;
-      paint.seen[key] = true;
-      paint.cells.push([target.x, target.y]);
-      var index = state.revealed.indexOf(key);
-      if (mode === "reveal" && index < 0) state.revealed.push(key);
-      if (mode === "cover" && index >= 0) state.revealed.splice(index, 1);
+    function paintPoint(point) {
+      // Só guarda pontos que andaram: um traço parado não vira 500 pontos.
+      var points = painting.points;
+      var last = points[points.length - 1];
+      if (last && Math.abs(last[0] - point.x) + Math.abs(last[1] - point.y) < 0.08) return;
+      points.push([Math.round(point.x * 1000) / 1000, Math.round(point.y * 1000) / 1000]);
       drawFog();
     }
 
@@ -677,11 +719,11 @@
       }
 
       if (state.is_master && (mode === "reveal" || mode === "cover")) {
-        if (!target) return;
         event.preventDefault();
-        paint = { cells: [], seen: {}, pointer: event.pointerId };
+        paint = { pointer: event.pointerId };
+        painting = { mode: mode, size: brushSize(), points: [] };
         capture(event);
-        paintLine(target);
+        paintPoint(pointAt(event, false));
         return;
       }
 
@@ -732,8 +774,7 @@
         return;
       }
       if (paint && event.pointerId === paint.pointer) {
-        var target = cellAt(event);
-        if (target) paintLine(target);
+        paintPoint(pointAt(event, false));
         return;
       }
       if (!drag || event.pointerId !== drag.pointer) return;
@@ -763,9 +804,15 @@
         return;
       }
       if (paint && event.pointerId === paint.pointer) {
-        var cells = paint.cells, reveal = mode === "reveal";
+        var stroke = painting;
         paint = null;
-        if (!cancelled && cells.length) send(urls.fog, { cells: cells, reveal: reveal });
+        painting = null;
+        if (!cancelled && stroke && stroke.points.length) {
+          send(urls.fog, { reveal: stroke.mode === "reveal", size: stroke.size,
+                           points: stroke.points });
+        } else {
+          drawFog();
+        }
         return;
       }
       if (!drag || event.pointerId !== drag.pointer) return;
@@ -817,6 +864,10 @@
       if (mode === "area") info.textContent = "Clique no mapa" +
         (shape === "circle" ? " no centro da área" : " na origem e arraste para mirar");
       else if (mode === "marker") info.textContent = "Clique no quadrado do marcador";
+      else if (mode === "reveal" || mode === "cover") {
+        info.textContent = (mode === "reveal" ? "Pinte para revelar" : "Pinte para cobrir") +
+          " — arraste no mapa; o tamanho do pincel está na barra.";
+      }
       else if (state) info.textContent = hint();
     }
 
@@ -848,8 +899,9 @@
         send(urls.undo, {});
       } else if (action === "fit-image") {
         if (!image.naturalWidth || !state) return;
-        var rows = Math.round(state.cols * image.naturalHeight / image.naturalWidth);
-        send(urls.config, { rows: Math.max(1, rows) });
+        // Proporção exata da imagem: aceita quebrado (20 × 13,7).
+        var rows = state.cols * image.naturalHeight / image.naturalWidth;
+        send(urls.config, { rows: Math.max(0.5, Math.round(rows * 100) / 100) });
       }
     });
 
