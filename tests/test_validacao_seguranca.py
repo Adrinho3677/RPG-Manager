@@ -134,3 +134,22 @@ def test_nome_malicioso_na_confirmacao_fica_inofensivo(mesa):
     html = mesa.user("mestre").get("/fichas/%d" % character_id).get_data(as_text=True)
     assert "alert(1)" not in html.split("data-confirm=")[0][-200:]
     assert 'data-confirm="Excluir a ficha de x&#39;);alert(1);//?"' in html
+
+
+def test_marca_de_versao_igual_no_python_e_no_javascript():
+    """Servidor e navegador precisam anunciar a mesma versão — é isso que
+    revela um `git pull` sem Reload (arquivos novos, código velho)."""
+    import os
+    import re
+    from app.version import BUILD
+    root = os.path.join(os.path.dirname(__file__), "..")
+    js = open(os.path.join(root, "app", "static", "js", "app.js"), encoding="utf-8").read()
+    marca = re.search(r'var BUILD = "([^"]+)"', js)
+    assert marca and marca.group(1) == BUILD, (
+        "app/version.py diz %r e app.js diz %r: atualize os dois juntos." % (BUILD, marca and marca.group(1)))
+
+
+def test_pagina_anuncia_a_versao(mesa):
+    page = mesa.user("ana").get("/painel").get_data(as_text=True)
+    from app.version import BUILD
+    assert 'data-build="%s"' % BUILD in page

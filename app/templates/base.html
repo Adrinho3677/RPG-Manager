@@ -10,7 +10,7 @@
 </head>
 {%- set live = live_campaign if live_campaign is defined and live_campaign
       else (campaign if campaign is defined and campaign and campaign.invite_code is defined else none) -%}
-<body{% if live and current_user.is_authenticated and live.can_view(current_user) %}
+<body data-build="{{ BUILD }}"{% if live and current_user.is_authenticated and live.can_view(current_user) %}
       data-live-url="{{ url_for('live.live', campaign_id=live.id) }}"
       data-campaign-id="{{ live.id }}" data-user-id="{{ current_user.id }}"{% endif %}>
 <header class="topbar">

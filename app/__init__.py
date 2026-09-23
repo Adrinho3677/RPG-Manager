@@ -139,9 +139,11 @@ def register_filters(app):
 
     @app.context_processor
     def inject_globals():
+        from app.version import BUILD
         return {
             "APP_NAME": "Grimório",
             "APP_TAGLINE": "Gerenciador de campanhas de RPG",
+            "BUILD": BUILD,
         }
 
 

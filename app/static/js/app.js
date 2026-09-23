@@ -2,6 +2,20 @@
 (function (global) {
   "use strict";
 
+  /* Mesmo número de app/version.py. Se o servidor responder outro, o Python em
+     execução é mais antigo que os arquivos desta página (no PythonAnywhere,
+     `git pull` sem Reload) — e coisas param de salvar em silêncio. */
+  var BUILD = "2026-09-22.1";
+  if (document.body.dataset.build && document.body.dataset.build !== BUILD) {
+    var aviso = document.createElement("div");
+    aviso.className = "build-warning";
+    aviso.innerHTML = "<strong>O site está com arquivos novos e servidor antigo.</strong> " +
+      "Coisas podem não salvar. Quem administra precisa recarregar o site: botão " +
+      "<strong>Reload</strong> na aba Web do PythonAnywhere, ou <code>touch</code> no arquivo " +
+      "WSGI. Servidor: " + document.body.dataset.build + " · esta página: " + BUILD;
+    document.body.insertBefore(aviso, document.body.firstChild);
+  }
+
   var tokenMeta = document.querySelector('meta[name="csrf-token"]');
 
   /* Toda chamada ao servidor passa por aqui: leva o token CSRF e se identifica

@@ -349,8 +349,11 @@ pip install -r requirements.txt
 ```
 
 E clique em **Reload** na aba Web — **sempre, depois de todo `git pull`**. Sem isso o site
-continua rodando o código antigo na memória, mas lê as páginas (templates) novas do disco: a
-mistura dá erro 500 justamente nas telas que mudaram.
+continua rodando o código antigo na memória, mas entrega ao navegador os arquivos novos: a
+mistura dá erro 500 nas telas que mudaram, ou faz coisas pararem de salvar em silêncio.
+Desde a versão 2026-09-22, quando isso acontece **o próprio site avisa** numa faixa vermelha no
+topo (o número da versão está em `app/version.py` e em `app/static/js/app.js`; um teste falha se
+os dois saírem de sincronia).
 
 Para não depender de lembrar do botão, dá para fazer tudo pelo console — editar o arquivo WSGI
 faz o PythonAnywhere recarregar o site:

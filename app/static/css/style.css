@@ -884,3 +884,9 @@ body.tv-mode .page { max-width: none; padding: .6rem .8rem; }
 .calendar-set .world-time { width: 72px; }
 .brush-size { display: inline-flex; align-items: center; gap: .3rem; margin: 0; color: var(--muted); }
 .brush-size input[type=range] { width: 90px; }
+
+/* Aviso de servidor desatualizado (git pull sem Reload) — ver app/version.py */
+.build-warning { position: sticky; top: 0; z-index: 90; padding: .6rem 1rem; font-size: .88rem;
+                 background: rgba(224, 86, 86, .18); border-bottom: 1px solid var(--danger);
+                 color: #f7d2d2; text-align: center; }
+.build-warning code { color: var(--accent-2); }
