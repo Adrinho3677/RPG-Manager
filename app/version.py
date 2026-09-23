@@ -9,4 +9,4 @@ nova e servidor velho — e coisas param de salvar sem dizer por quê.
 O mesmo número está em static/js/app.js (BUILD). Se os dois diferirem, o
 navegador avisa. Um teste falha se esquecerem de subir os dois juntos.
 """
-BUILD = "2026-09-22.1"
+BUILD = "2026-09-22.2"

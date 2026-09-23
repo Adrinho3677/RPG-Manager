@@ -123,14 +123,16 @@ def test_nevoa_esconde_inimigos_mas_nao_o_grupo(mesa):
     mestre.post(base + "/mapa/configurar", json={"fog": True})
 
     names = [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]]
-    assert names == ["Lia"]  # aliada aparece mesmo no escuro; o ghoul não
+    assert names == ["Lia"]  # ligar a névoa cobre tudo; a aliada aparece mesmo assim
 
-    mestre.post(base + "/mapa/nevoa", json={"cells": [[8, 8]], "reveal": True})
-    visto = ana.get(base + "/mapa").get_json()
-    assert sorted(t["name"] for t in visto["tokens"]) == ["Ghoul 1", "Lia"]
-    assert visto["revealed"] == ["8,8"]
+    # A sala do ghoul: forma cortada abre um buraco na névoa.
+    state = forma(mestre, base, "rect", [[8, 8], [9, 9]]).get_json()
+    sala = state["fog_layer"]["shapes"][0]
+    assert state["fog_layer"]["fill"] is True and sala["cut"] is True
+    assert sorted(t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]) == ["Ghoul 1", "Lia"]
 
-    mestre.post(base + "/mapa/nevoa", json={"all": True, "reveal": False})
+    # Fim da cena: a mesma forma volta a cobrir, sem redesenhar nada.
+    mestre.post(base + "/mapa/nevoa", json={"op": "uncut", "id": sala["id"]})
     assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Lia"]
 
 
@@ -139,10 +141,10 @@ def test_grade_menor_traz_fichas_para_dentro(mesa):
     mestre = mesa.user("mestre")
     mestre.post(base + "/mapa/mover", json={"uid": uids["Kian"], "x": 19, "y": 13})
     mestre.post(base + "/mapa/configurar", json={"fog": True})
-    mestre.post(base + "/mapa/nevoa", json={"cells": [[19, 13], [2, 2]], "reveal": True})
+    forma(mestre, base, "rect", [[2, 2], [3, 3]])
     state = mestre.post(base + "/mapa/configurar", json={"cols": 10, "rows": 5}).get_json()
     assert (state["tokens"][0]["x"], state["tokens"][0]["y"]) == (9, 4)
-    assert state["revealed"] == ["2,2"]
+    assert len(state["fog_layer"]["shapes"]) == 1   # a forma sobrevive ao redimensionar
 
     bad = mestre.post(base + "/mapa/configurar", json={"cell_size": "0"})
     assert bad.status_code == 400
@@ -236,9 +238,11 @@ def test_normalize_ignora_lixo():
                                     "tokens": {"a": {"x": 500, "y": -1}, "b": "lixo"},
                                     "cell_size": "nan"})
     assert (board["cols"], board["rows"]) == (20, 14)  # lixo volta ao padrão
-    assert board["revealed"] == ["1,1"]                # "x" e "99,99" saem
     assert board["tokens"] == {"a": {"x": 19, "y": 0, "hidden": False, "size": 1}}
-    assert board["fog_layer"] == {"base": "cover", "strokes": []}
+    # "1,1" da névoa antiga virou forma cortada; "x" e "99,99" saem
+    assert board["revealed"] == []
+    shapes = board["fog_layer"]["shapes"]
+    assert [(s["kind"], s["cut"], s["points"]) for s in shapes] == [("rect", True, [[1, 1], [2, 2]])]
 
 
 def test_exportacao_leva_o_mapa(mesa):
@@ -299,7 +303,7 @@ def test_marcadores_comecam_escondidos_e_o_mestre_revela(mesa):
     # Debaixo da névoa, some de novo para o jogador.
     mestre.post(base + "/mapa/configurar", json={"fog": True})
     assert ana.get(base + "/mapa").get_json()["markers"] == []
-    mestre.post(base + "/mapa/nevoa", json={"cells": [[3, 4]], "reveal": True})
+    forma(mestre, base, "rect", [[3, 4], [4, 5]])
     assert len(ana.get(base + "/mapa").get_json()["markers"]) == 1
 
     assert ana.post(base + "/mapa/marcador", json={"op": "add", "type": "porta", "x": 0, "y": 0}).status_code == 403
@@ -330,7 +334,7 @@ def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
         asset = Asset.query.filter_by(title="Cripta").one()
         asset_id, original = asset.id, asset.url
     mestre.post(base + "/mapa/configurar", json={"map_id": asset_id, "cols": 2, "rows": 1, "fog": True})
-    mestre.post(base + "/mapa/nevoa", json={"cells": [[0, 0]], "reveal": True})
+    forma(mestre, base, "rect", [[0, 0], [1, 1]])
 
     visto = ana.get(base + "/mapa").get_json()
     assert visto["map_url"] != original and "/mapa/imagem" in visto["map_url"]
@@ -348,7 +352,7 @@ def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
     assert max(right) < 30          # não revelado: preto
 
     # Revelar mais muda a URL (o navegador não fica com a versão velha).
-    mestre.post(base + "/mapa/nevoa", json={"all": True, "reveal": True})
+    mestre.post(base + "/mapa/nevoa", json={"op": "clear"})
     assert ana.get(base + "/mapa").get_json()["map_url"] != visto["map_url"]
 
     # Sem névoa, volta a ser o original.
@@ -360,13 +364,14 @@ def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
     assert mesa.user("intruso").get(visto["map_url"]).status_code == 403
 
 
-# --------------------------------------------- névoa pintada (traços livres)
-def pincelar(client, base, reveal, points, size=1.0):
+# ------------------------------------------ névoa por formas (Owlbear Rodeo)
+def forma(client, base, kind, points, cut=True, size=1.0):
+    """Desenha uma forma de névoa. Cortada (cut) = abre buraco na névoa."""
     return client.post(base + "/mapa/nevoa",
-                       json={"reveal": reveal, "size": size, "points": points})
+                       json={"op": "add", "kind": kind, "points": points, "size": size, "cut": cut})
 
 
-def test_nevoa_pintada_revela_so_o_que_o_pincel_passou(mesa):
+def test_sala_redonda_revela_so_o_circulo(mesa):
     camp, base, uids, _ = mesa_de_combate(mesa)
     mestre, ana = mesa.user("mestre"), mesa.user("ana")
     mestre.post(base + "/mapa/configurar", json={"fog": True})
@@ -374,52 +379,108 @@ def test_nevoa_pintada_revela_so_o_que_o_pincel_passou(mesa):
     mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 2"], "x": 12, "y": 5})
     assert ana.get(base + "/mapa").get_json()["tokens"] == []
 
-    # Um traço redondo em volta do Ghoul 1 (centro do quadrado 5,5).
-    state = pincelar(mestre, base, True, [[5.5, 5.5]], size=1.2).get_json()
-    assert state["fog_layer"]["strokes"][0]["mode"] == "reveal"
+    # Sala redonda em volta do Ghoul 1 (centro do quadrado 5,5) — o quadrado
+    # nunca tamparia isso direito.
+    state = forma(mestre, base, "circle", [[5.5, 5.5]], size=1.2).get_json()
+    assert state["fog_layer"]["shapes"][0]["kind"] == "circle"
     assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
 
-    # Cobrir de novo por cima: o último traço manda.
-    pincelar(mestre, base, False, [[5.5, 5.5]], size=1.5)
-    assert ana.get(base + "/mapa").get_json()["tokens"] == []
-
-    # Traço comprido passando pelos dois.
-    pincelar(mestre, base, True, [[5.5, 5.5], [8, 5.5], [12.5, 5.5]], size=0.6)
+    # Corredor à mão livre até o outro: o pincel também vira forma.
+    forma(mestre, base, "brush", [[5.5, 5.5], [8, 5.5], [12.5, 5.5]], size=0.6)
     assert sorted(t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]) == ["Ghoul 1", "Ghoul 2"]
 
-    # "Cobrir tudo" limpa a pintura.
-    mestre.post(base + "/mapa/nevoa", json={"all": True, "reveal": False})
-    state = mestre.get(base + "/mapa").get_json()
-    assert state["fog_layer"] == {"base": "cover", "strokes": []}
-    assert ana.get(base + "/mapa").get_json()["tokens"] == []
+    # "Limpar" apaga tudo e o mapa fica à mostra.
+    state = mestre.post(base + "/mapa/nevoa", json={"op": "clear"}).get_json()
+    assert state["fog_layer"] == {"fill": False, "shapes": []}
+    assert len(ana.get(base + "/mapa").get_json()["tokens"]) == 2
 
 
-def test_nevoa_antiga_por_quadrados_continua_valendo(mesa):
+def test_forma_solta_cobre_e_cortada_abre_buraco(mesa):
+    """Sem 'cobrir tudo': só a mancha desenhada esconde — e um corte nela revela."""
     camp, base, uids, _ = mesa_de_combate(mesa)
     mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 5, "y": 5})
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 2"], "x": 15, "y": 5})
     mestre.post(base + "/mapa/configurar", json={"fog": True})
+    mestre.post(base + "/mapa/nevoa", json={"op": "fill", "value": False})
+    assert sorted(t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]) == [
+        "Ghoul 1", "Ghoul 2"]
+
+    # Um polígono cobrindo o canto onde está o Ghoul 1.
+    poly = forma(mestre, base, "poly", [[4, 4], [8, 4], [8, 8], [4, 8]], cut=False).get_json()
+    assert "Ghoul 1" not in [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]]
+
+    # Buraco redondo bem em cima dele: forma cortada vence a névoa toda.
+    forma(mestre, base, "circle", [[5.5, 5.5]], size=0.8)
+    assert "Ghoul 1" in [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]]
+
+    # Apagar o polígono não deixa resto.
+    mestre.post(base + "/mapa/nevoa", json={"op": "remove", "id": poly["fog_layer"]["shapes"][0]["id"]})
+    state = mestre.get(base + "/mapa").get_json()
+    assert [s["kind"] for s in state["fog_layer"]["shapes"]] == ["circle"]
+
+
+def test_revelar_e_cobrir_a_mesma_sala(mesa):
+    """O jeito de jogar: salas desenhadas antes, reveladas com um clique."""
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
     mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 3, "y": 3})
-    mestre.post(base + "/mapa/nevoa", json={"cells": [[3, 3]], "reveal": True})
-    assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
-    pincelar(mestre, base, False, [[3.5, 3.5]], size=1.0)  # pincel cobre por cima
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    sala = forma(mestre, base, "rect", [[2, 2], [6, 6]], cut=False).get_json()["fog_layer"]["shapes"][0]
     assert ana.get(base + "/mapa").get_json()["tokens"] == []
 
+    for _ in range(2):   # revela, cobre, revela de novo: sempre a mesma forma
+        state = mestre.post(base + "/mapa/nevoa", json={"op": "toggle", "id": sala["id"]}).get_json()
+        assert state["fog_layer"]["shapes"][0]["cut"] is True
+        assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
+        mestre.post(base + "/mapa/nevoa", json={"op": "uncut", "id": sala["id"]})
+        assert ana.get(base + "/mapa").get_json()["tokens"] == []
 
-def test_limite_de_pintura(mesa):
+    sumida = mestre.post(base + "/mapa/nevoa", json={"op": "cut", "id": "nao-existe"})
+    assert sumida.status_code == 400
+    assert "não está mais no mapa" in sumida.get_json()["message"]
+
+
+def test_nevoa_antiga_por_quadrados_vira_forma(mesa):
+    """Mapa salvo antes das formas: os quadrados revelados continuam revelados."""
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 3, "y": 3})
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    with mesa.app.app_context():
+        from app.extensions import db
+        from app.models import Encounter
+        encounter = Encounter.query.one()
+        board = dict(encounter.board)
+        board["revealed"] = ["3,3"]                     # como o banco antigo guardava
+        board["fog_layer"] = {"base": "cover", "strokes": []}
+        encounter.board = board
+        db.session.commit()
+
+    assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
+    state = mestre.get(base + "/mapa").get_json()
+    assert state["fog_layer"]["fill"] is True
+    assert [(s["kind"], s["cut"]) for s in state["fog_layer"]["shapes"]] == [("rect", True)]
+
+
+def test_limite_de_formas(mesa):
     camp, base, uids, _ = mesa_de_combate(mesa)
     mestre = mesa.user("mestre")
     mestre.post(base + "/mapa/configurar", json={"fog": True})
     linha = [[x / 10.0, 1] for x in range(400)]
     for _ in range(40):  # 40 × 400 pontos passa do teto de 12.000
-        response = pincelar(mestre, base, True, linha)
+        response = forma(mestre, base, "brush", linha)
         if response.status_code == 400:
-            assert "pintura demais" in response.get_json()["message"]
+            assert "complexa demais" in response.get_json()["message"]
             break
     else:
-        raise AssertionError("o limite de pintura não foi aplicado")
+        raise AssertionError("o limite de formas não foi aplicado")
+
+    torta = forma(mestre, base, "poly", [[1, 1]])
+    assert torta.status_code == 400 and "inválida" in torta.get_json()["message"]
 
 
-def test_imagem_recortada_segue_o_pincel(mesa, app):
+def test_imagem_recortada_segue_as_formas(mesa, app):
     import io
     from PIL import Image
     camp, base, uids, _ = mesa_de_combate(mesa)
@@ -430,7 +491,7 @@ def test_imagem_recortada_segue_o_pincel(mesa, app):
     with app.app_context():
         asset_id = Asset.query.filter_by(title="Sala redonda").one().id
     mestre.post(base + "/mapa/configurar", json={"map_id": asset_id, "cols": 10, "rows": 10, "fog": True})
-    pincelar(mestre, base, True, [[5, 5]], size=2)  # círculo no meio
+    forma(mestre, base, "circle", [[5, 5]], size=2)  # sala redonda no meio
 
     url = ana.get(base + "/mapa").get_json()["map_url"]
     response = ana.get(url)

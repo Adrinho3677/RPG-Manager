@@ -3,7 +3,7 @@
 
 Pintar a névoa por cima no navegador não guarda segredo nenhum: a imagem
 inteira já foi baixada. Aqui o servidor gera uma cópia com a névoa "queimada"
-— os mesmos traços de pincel que o mestre pintou —, e é só essa cópia que o
+— as mesmas formas de névoa que o mestre desenhou —, e é só essa cópia que o
 jogador recebe.
 
 As cópias ficam em UPLOAD_DIR/nevoa/, com o resumo do que está revelado no
@@ -44,25 +44,15 @@ def masked_path(asset, board, key):
     width, height = image.size
     cell_w, cell_h = width / float(board["cols"]), height / float(board["rows"])
 
-    # Máscara: 255 = coberto pela névoa, 0 = revelado. Mesma conta do navegador.
+    # Máscara: 255 = coberto pela névoa, 0 = revelado. Mesma conta do navegador:
+    # primeiro as formas que põem névoa, depois as cortadas abrindo buraco nelas.
     layer = board["fog_layer"]
-    mask = Image.new("L", image.size, 255 if layer["base"] == "cover" else 0)
+    mask = Image.new("L", image.size, 255 if layer["fill"] else 0)
     draw = ImageDraw.Draw(mask)
-    for cell in board["revealed"]:          # névoa antiga, por quadrado
-        try:
-            x, y = (int(part) for part in cell.split(","))
-        except ValueError:
-            continue
-        draw.rectangle([math.floor(x * cell_w), math.floor(y * cell_h),
-                        math.ceil((x + 1) * cell_w), math.ceil((y + 1) * cell_h)], fill=0)
-    for stroke in layer["strokes"]:         # pincel: traços com ponta redonda
-        tone = 0 if stroke["mode"] == "reveal" else 255
-        radius = max(1.0, stroke["size"] * (cell_w + cell_h) / 2.0)
-        points = [(px * cell_w, py * cell_h) for px, py in stroke["points"]]
-        if len(points) > 1:
-            draw.line(points, fill=tone, width=int(round(radius * 2)), joint="curve")
-        for px, py in points:
-            draw.ellipse([px - radius, py - radius, px + radius, py + radius], fill=tone)
+    for cut in (False, True):
+        for shape in layer["shapes"]:
+            if bool(shape["cut"]) is cut:
+                _draw_shape(draw, shape, cell_w, cell_h, 0 if cut else 255)
 
     image = Image.composite(Image.new("RGB", image.size, FOG_COLOR), image, mask)
 
@@ -71,6 +61,28 @@ def masked_path(asset, board, key):
     os.replace(temp, target)  # quem pedir junto nunca lê um arquivo pela metade
     _prune(folder, asset.id)
     return target
+
+
+def _draw_shape(draw, shape, cell_w, cell_h, tone):
+    """Desenha uma forma de névoa na máscara (coordenadas em quadrados)."""
+    points = [(px * cell_w, py * cell_h) for px, py in shape["points"]]
+    kind = shape["kind"]
+    if kind == "rect":
+        (x0, y0), (x1, y1) = points
+        draw.rectangle([math.floor(x0), math.floor(y0), math.ceil(x1), math.ceil(y1)], fill=tone)
+        return
+    if kind == "poly":
+        draw.polygon(points, fill=tone)
+        return
+    radius = max(1.0, shape["size"] * (cell_w + cell_h) / 2.0)
+    if kind == "circle":
+        (px, py) = points[0]
+        draw.ellipse([px - radius, py - radius, px + radius, py + radius], fill=tone)
+        return
+    if len(points) > 1:                     # pincel: traço com ponta redonda
+        draw.line(points, fill=tone, width=int(round(radius * 2)), joint="curve")
+    for px, py in points:
+        draw.ellipse([px - radius, py - radius, px + radius, py + radius], fill=tone)
 
 
 def _prune(folder, asset_id):

@@ -90,10 +90,15 @@ pode fazer **rolagens secretas**.
     A grade aceita **número quebrado** (18,5 × 14,35): o último quadrado de cada borda fica
     parcial, como no mapa de verdade, e "Ajustar à imagem" usa a proporção exata;
   - **esconde fichas** — some para os jogadores no mapa *e* na ordem de iniciativa;
-  - **pinta a névoa de guerra** com um pincel de tamanho ajustável ("Revelar" / "Cobrir"):
-    traço livre, com ponta redonda, que acompanha sala redonda, corredor torto e caverna sem
-    virar escadinha de quadrados. Pintar por cima corrige; "Revelar tudo" e "Cobrir tudo"
-    recomeçam. A névoa é **de verdade**: o servidor desenha os mesmos traços na imagem e o
+  - **desenha a névoa de guerra por formas**, no estilo do Owlbear Rodeo: retângulo ▭,
+    polígono ⬠ (clique em cada quina, Enter fecha), círculo ◯ e pincel 🖌 à mão livre — sala
+    redonda, corredor torto e caverna sem virar escadinha de quadrados. As formas grudam na
+    grade; segure Ctrl para soltar. Cada forma põe névoa, e a forma **cortada** abre um buraco
+    em toda a névoa. Daí o jeito de jogar: antes da sessão desenhe uma forma por sala; na
+    hora, "⬚ Selecionar" a sala e "☀ Revelar" (duplo clique faz o mesmo), "☁ Cobrir" quando
+    o grupo sair, 🗑 ou Delete para apagar. "▩ Cobrir tudo" liga a névoa no mapa inteiro,
+    "✧ Limpar" apaga tudo e "👁 Prévia" mostra o que o jogador está vendo.
+    A névoa é **de verdade**: o servidor desenha as mesmas formas na imagem e o
     jogador recebe só essa cópia — nem abrindo o arquivo ele vê o resto. Inimigos e marcadores
     na parte escura também não chegam ao navegador dele. O grupo aparece sempre. (Deixe o mapa
     *escondido* na galeria: se estiver visível lá, o jogador abre o original por lá — a tela avisa.)

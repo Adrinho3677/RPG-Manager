@@ -883,6 +883,9 @@ body.tv-mode .page { max-width: none; padding: .6rem .8rem; }
 .calendar-agenda-head { margin-top: 1rem; }
 .calendar-set .world-time { width: 72px; }
 .brush-size { display: inline-flex; align-items: center; gap: .3rem; margin: 0; color: var(--muted); }
+.board-fog-shape { display: inline-flex; gap: .3rem; padding: 0 .25rem;
+  border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.board-fog-tools .check { margin: 0; gap: .25rem; color: var(--muted); }
 .brush-size input[type=range] { width: 90px; }
 
 /* Aviso de servidor desatualizado (git pull sem Reload) — ver app/version.py */

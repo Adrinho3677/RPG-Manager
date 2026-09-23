@@ -122,16 +122,43 @@
             <span class="muted small" data-area-unit></span>
           </span>
           {% if is_master %}
+            {# Névoa por formas: desenhe uma por sala antes da sessão e, no jogo,
+               clique na sala e mande revelar (ou cobrir de novo). #}
             <span class="board-fog-tools" data-fog-tools hidden>
-              <button class="btn btn-ghost btn-sm active" type="button" data-board-mode="move">✋ Mover</button>
-              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="reveal">☀ Revelar</button>
-              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="cover">☁ Cobrir</button>
-              <label class="brush-size" title="Tamanho do pincel, em quadrados">🖌
+              <span class="muted small">Névoa</span>
+              <button class="btn btn-ghost btn-sm active" type="button" data-board-mode="move"
+                      title="Mexer nas fichas">✋ Mover</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="fog-rect"
+                      title="Retângulo: arraste no mapa (Ctrl solta da grade)">▭</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="fog-poly"
+                      title="Polígono: clique em cada quina, Enter fecha">⬠</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="fog-circle"
+                      title="Círculo: arraste do centro para fora — bom para sala redonda">◯</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="fog-brush"
+                      title="Pincel à mão livre">🖌</button>
+              <label class="brush-size" title="Tamanho do pincel, em quadrados">
                 <input type="range" min="0.25" max="6" step="0.25" value="1.5" data-brush-size
                        aria-label="Tamanho do pincel (quadrados)">
               </label>
-              <button class="btn btn-ghost btn-sm" type="button" data-board-action="reveal-all">Revelar tudo</button>
-              <button class="btn btn-ghost btn-sm" type="button" data-board-action="cover-all">Cobrir tudo</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-mode="fog-pick"
+                      title="Selecionar uma forma já desenhada">⬚ Selecionar</button>
+              <label class="check small" title="A forma nova já nasce cortada: abre buraco na névoa">
+                <input type="checkbox" data-fog-cut> corta
+              </label>
+              <span class="board-fog-shape" data-fog-shape-tools hidden>
+                <button class="btn btn-ghost btn-sm" type="button" data-board-action="fog-cut"
+                        title="Revelar esta forma (duplo clique faz o mesmo)">☀ Revelar</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-board-action="fog-uncut"
+                        title="Cobrir esta forma de novo">☁ Cobrir</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-board-action="fog-remove"
+                        title="Apagar a forma (tecla Delete)">🗑</button>
+              </span>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-action="fog-fill"
+                      title="Liga/desliga a névoa cobrindo o mapa inteiro">▩ Cobrir tudo</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-action="fog-clear"
+                      title="Apaga todas as formas e descobre o mapa">✧ Limpar</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-board-action="fog-preview"
+                      title="Ver a névoa como o jogador vê">👁 Prévia</button>
             </span>
             <span class="board-tool-group">
               <select data-marker-type aria-label="Tipo de marcador">

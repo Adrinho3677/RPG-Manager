@@ -115,7 +115,9 @@
     var sizeInput = panel.querySelector("[data-area-size]");
     var areaShapeNow = null;   // forma escolhida na barra (modo "area")
     var aiming = null;         // área sendo mirada agora
-    var painting = null;       // traço de névoa sendo pintado agora
+    var drawing = null;        // forma de névoa sendo desenhada agora
+    var selectedShape = null;  // id da forma de névoa selecionada (mestre)
+    var preview = false;       // "prévia do jogador": ver a névoa fechada
     var selectedMarker = null; // id do marcador selecionado (mestre)
     var scroller = panel.querySelector("[data-board-scroll]");
     var boardEl = panel.querySelector("[data-board-surface]");
@@ -131,9 +133,10 @@
     var state = null;
     var cell = readZoom();
     var selected = null;      // uid da ficha selecionada
-    var mode = "move";        // move | reveal | cover (névoa, só mestre)
+    // move | area | marker | fog-rect | fog-poly | fog-circle | fog-brush | fog-pick
+    var mode = "move";
     var drag = null;          // arraste de ficha em andamento
-    var paint = null;         // pincel de névoa em andamento
+    var paint = null;         // arraste de forma de névoa em andamento
     var busy = 0;             // pedidos em andamento: não sobrescreve a tela
     var configTimer = null;
     var configDirty = false;   // há mudança digitada ainda não enviada
@@ -181,45 +184,91 @@
       }
     }
 
-    /* Névoa pintada: monta uma máscara (branco = coberto) com os traços do
-       pincel e usa essa máscara para pintar a cor da névoa. Traço com ponta
-       redonda acompanha sala redonda; o servidor desenha igualzinho na imagem
-       que o jogador recebe (app/fogimage.py). */
+    /* Névoa por formas, no estilo do Owlbear Rodeo: cada forma põe névoa, e a
+       forma "cortada" abre um buraco em toda a névoa. A máscara (branco =
+       coberto) sai daí; o servidor desenha igualzinho na imagem que o jogador
+       recebe (app/fogimage.py). */
+    function tracePath(ctx, shape) {
+      var points = shape.points;
+      if (shape.kind === "rect") {
+        var a = points[0], b = points[points.length - 1];
+        ctx.rect(Math.min(a[0], b[0]) * cell, Math.min(a[1], b[1]) * cell,
+                 Math.abs(b[0] - a[0]) * cell, Math.abs(b[1] - a[1]) * cell);
+        return;
+      }
+      if (shape.kind === "circle") {
+        ctx.arc(points[0][0] * cell, points[0][1] * cell, Math.max(1, shape.size * cell), 0, Math.PI * 2);
+        return;
+      }
+      points.forEach(function (point, index) {
+        var px = point[0] * cell, py = point[1] * cell;
+        if (index) ctx.lineTo(px, py);
+        else ctx.moveTo(px, py);
+      });
+      if (shape.kind === "poly") ctx.closePath();
+    }
+
+    function paintShape(ctx, shape) {
+      ctx.beginPath();
+      if (shape.kind === "brush") {
+        if (shape.points.length === 1) {
+          var only = shape.points[0];
+          ctx.arc(only[0] * cell, only[1] * cell, Math.max(1, shape.size * cell), 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
+        ctx.lineCap = ctx.lineJoin = "round";
+        ctx.lineWidth = Math.max(1, shape.size * 2 * cell);
+        tracePath(ctx, shape);
+        ctx.stroke();
+        return;
+      }
+      tracePath(ctx, shape);
+      ctx.fill();
+    }
+
+    function fogShapes() {
+      var shapes = ((state.fog_layer || {}).shapes || []).slice();
+      if (drawing) {
+        // Polígono em andamento: a próxima quina acompanha o mouse.
+        shapes.push(drawing.live && drawing.kind === "poly"
+          ? { kind: "poly", cut: drawing.cut, size: drawing.size,
+              points: drawing.points.concat([drawing.live]) }
+          : drawing);
+      }
+      return shapes;
+    }
+
     function fogMask(width, height) {
       var mask = document.createElement("canvas");
       mask.width = Math.max(1, Math.round(width));
       mask.height = Math.max(1, Math.round(height));
       var ctx = mask.getContext("2d");
-      var layer = state.fog_layer || { base: "cover", strokes: [] };
-      if (layer.base !== "reveal") {
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(0, 0, width, height);
-      }
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      (state.revealed || []).forEach(function (key) {   // névoa antiga, por quadrado
-        var parts = key.split(",");
-        ctx.clearRect(parts[0] * cell, parts[1] * cell, cell, cell);
-      });
-      (layer.strokes || []).concat(painting ? [painting] : []).forEach(function (stroke) {
-        ctx.globalCompositeOperation = stroke.mode === "reveal" ? "destination-out" : "source-over";
-        ctx.strokeStyle = ctx.fillStyle = "#fff";
-        ctx.lineWidth = Math.max(1, stroke.size * 2 * cell);
-        ctx.beginPath();
-        stroke.points.forEach(function (point, index) {
-          var px = point[0] * cell, py = point[1] * cell;
-          if (index) ctx.lineTo(px, py);
-          else ctx.moveTo(px, py);
-        });
-        if (stroke.points.length === 1) {
-          var only = stroke.points[0];
-          ctx.arc(only[0] * cell, only[1] * cell, stroke.size * cell, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.stroke();
-        }
-      });
+      ctx.fillStyle = ctx.strokeStyle = "#fff";
+      if ((state.fog_layer || {}).fill) ctx.fillRect(0, 0, width, height);
+      var shapes = fogShapes();
+      shapes.forEach(function (shape) { if (!shape.cut) paintShape(ctx, shape); });
+      ctx.globalCompositeOperation = "destination-out";
+      shapes.forEach(function (shape) { if (shape.cut) paintShape(ctx, shape); });
+      ctx.globalCompositeOperation = "source-over";
       return mask;
+    }
+
+    /* Contorno das formas, só para o mestre: é por ele que se escolhe a sala
+       para revelar. Tracejado = forma cortada (já revelada). */
+    function outlineShapes(ctx) {
+      ctx.save();
+      fogShapes().forEach(function (shape) {
+        var on = shape.id && shape.id === selectedShape;
+        ctx.strokeStyle = on ? "rgba(233, 196, 106, .95)"
+          : shape.cut ? "rgba(110, 220, 180, .55)" : "rgba(170, 160, 255, .45)";
+        ctx.lineWidth = on ? 3 : 1.5;
+        ctx.setLineDash(shape.cut ? [7, 5] : []);
+        ctx.beginPath();
+        tracePath(ctx, shape);
+        ctx.stroke();
+      });
+      ctx.restore();
     }
 
     function drawFog() {
@@ -233,13 +282,15 @@
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       if (!state.fog) return;
+      var asMaster = state.is_master && !preview;
       ctx.drawImage(fogMask(width, height), 0, 0, width, height);
       // Mestre enxerga através da névoa (para saber o que está escondido);
-      // o jogador vê fechado.
+      // o jogador — e a prévia — veem fechado.
       ctx.globalCompositeOperation = "source-in";
-      ctx.fillStyle = state.is_master ? "rgba(6, 5, 12, .62)" : "rgb(10, 9, 16)";
+      ctx.fillStyle = asMaster ? "rgba(6, 5, 12, .62)" : "rgb(10, 9, 16)";
       ctx.fillRect(0, 0, width, height);
       ctx.globalCompositeOperation = "source-over";
+      if (asMaster) outlineShapes(ctx);
     }
 
     function tokenNode(token) {
@@ -501,7 +552,11 @@
       renderAreas();
       renderTokens();
       renderSelected();
-      if (!drag && !aiming && mode === "move") info.textContent = hint();
+      syncFogTools();
+      if (!drag && !aiming && !drawing) {
+        if (mode === "move") info.textContent = hint();
+        else if (mode.indexOf("fog-") === 0) fogInfo();
+      }
       var unit = panel.querySelector("[data-area-unit]");
       if (unit) unit.textContent = state.cell_size ? state.cell_unit : "quadrados";
       syncConfig();
@@ -554,7 +609,7 @@
       var warning = config.querySelector("[data-fog-warning]");
       var current = state.maps.filter(function (m) { return m.id === state.map_id; })[0];
       if (warning) warning.hidden = !(state.fog && current && !current.hidden);
-      if (!state.fog && (mode === "reveal" || mode === "cover")) setMode("move");
+      if (!state.fog && mode.indexOf("fog-") === 0) setMode("move");
     }
 
     function readConfig() {
@@ -587,8 +642,8 @@
       state = data;
       state.tokens = state.tokens || [];
       state.bench = state.bench || [];
-      state.revealed = state.revealed || [];
-      state.fog_layer = state.fog_layer || { base: "cover", strokes: [] };
+      state.fog_layer = state.fog_layer || { fill: false, shapes: [] };
+      if (selectedShape && !findShape(selectedShape)) selectedShape = null;
       state.markers = state.markers || [];
       state.areas = state.areas || [];
       if (selected && !findToken(selected)) selected = null;
@@ -683,13 +738,124 @@
       return Math.max(0.1, Math.min(state.brush || 12, value || 1.5));
     }
 
-    function paintPoint(point) {
-      // Só guarda pontos que andaram: um traço parado não vira 500 pontos.
-      var points = painting.points;
-      var last = points[points.length - 1];
-      if (last && Math.abs(last[0] - point.x) + Math.abs(last[1] - point.y) < 0.08) return;
-      points.push([Math.round(point.x * 1000) / 1000, Math.round(point.y * 1000) / 1000]);
+    function cutNow() {
+      var box = panel.querySelector("[data-fog-cut]");
+      return !!(box && box.checked);
+    }
+
+    function findShape(id) {
+      return ((state.fog_layer || {}).shapes || []).filter(function (s) { return s.id === id; })[0];
+    }
+
+    /* Ponto do mapa, em quadrados. As formas grudam na grade (como no Owlbear);
+       segurando Ctrl a quina cai onde o mouse está. O pincel é sempre livre. */
+    function fogPoint(event, free) {
+      var rect = boardEl.getBoundingClientRect();
+      var x = (event.clientX - rect.left) / cell, y = (event.clientY - rect.top) / cell;
+      if (!free && !event.ctrlKey && !event.metaKey) { x = Math.round(x); y = Math.round(y); }
+      return [Math.round(Math.max(0, Math.min(state.cols, x)) * 1000) / 1000,
+              Math.round(Math.max(0, Math.min(state.rows, y)) * 1000) / 1000];
+    }
+
+    /* Mesma conta do servidor (app/board.py): o ponto está dentro da forma? */
+    function inShape(shape, x, y) {
+      var points = shape.points;
+      if (shape.kind === "rect") {
+        var a = points[0], b = points[1];
+        return x >= Math.min(a[0], b[0]) && x <= Math.max(a[0], b[0]) &&
+               y >= Math.min(a[1], b[1]) && y <= Math.max(a[1], b[1]);
+      }
+      if (shape.kind === "circle") {
+        var dx = x - points[0][0], dy = y - points[0][1];
+        return dx * dx + dy * dy <= shape.size * shape.size;
+      }
+      if (shape.kind === "poly") {
+        var inside = false;
+        for (var i = 0; i < points.length; i++) {
+          var px = points[i][0], py = points[i][1];
+          var q = points[(i + 1) % points.length], qx = q[0], qy = q[1];
+          if ((py > y) !== (qy > y) && x < px + (y - py) * (qx - px) / ((qy - py) || 1e-9)) inside = !inside;
+        }
+        return inside;
+      }
+      var radius = shape.size;
+      for (var j = 0; j < points.length; j++) {
+        var ax = x - points[j][0], ay = y - points[j][1];
+        if (ax * ax + ay * ay <= radius * radius) return true;
+        if (j + 1 < points.length) {
+          var vx = points[j + 1][0] - points[j][0], vy = points[j + 1][1] - points[j][1];
+          var len = vx * vx + vy * vy;
+          if (!len) continue;
+          var t = Math.max(0, Math.min(1, (ax * vx + ay * vy) / len));
+          var ox = ax - t * vx, oy = ay - t * vy;
+          if (ox * ox + oy * oy <= radius * radius) return true;
+        }
+      }
+      return false;
+    }
+
+    function shapeAt(point) {
+      var shapes = (state.fog_layer || {}).shapes || [];
+      for (var i = shapes.length - 1; i >= 0; i--) {     // a de cima primeiro
+        if (inShape(shapes[i], point[0], point[1])) return shapes[i];
+      }
+      return null;
+    }
+
+    var FOG_HINT = {
+      "fog-rect": "Arraste para cobrir um retângulo de névoa",
+      "fog-circle": "Arraste do centro para fora: névoa redonda",
+      "fog-poly": "Clique em cada quina; Enter (ou duplo clique) fecha a forma, Esc cancela",
+      "fog-brush": "Arraste para pintar névoa à mão livre",
+      "fog-pick": "Clique numa forma de névoa para revelar, cobrir ou apagar"
+    };
+
+    function fogInfo() {
+      if (mode === "fog-pick") {
+        var shape = selectedShape && findShape(selectedShape);
+        info.textContent = shape
+          ? "Forma selecionada: " + (shape.cut ? "revelada (cortada)" : "cobrindo o mapa")
+          : FOG_HINT["fog-pick"];
+        return;
+      }
+      info.textContent = (FOG_HINT[mode] || "") +
+        (cutNow() && mode !== "fog-pick" ? " — já cortada (revela)" : "");
+    }
+
+    /* Os botões de revelar/cobrir/apagar só fazem sentido com uma forma escolhida. */
+    function syncFogTools() {
+      panel.querySelectorAll("[data-fog-shape-tools]").forEach(function (box) {
+        box.hidden = !(state && state.fog && selectedShape);
+      });
+    }
+
+    function selectShape(id) {
+      selectedShape = id;
+      syncFogTools();
+      fogInfo();
       drawFog();
+    }
+
+    function sendShape(shape) {
+      send(urls.fog, { op: "add", kind: shape.kind, points: shape.points,
+                       size: shape.size, cut: shape.cut });
+    }
+
+    function validShape(shape) {
+      if (shape.kind === "rect") {
+        var a = shape.points[0], b = shape.points[1];
+        return Math.abs(b[0] - a[0]) > 0.1 && Math.abs(b[1] - a[1]) > 0.1;
+      }
+      if (shape.kind === "circle") return shape.size > 0.1;
+      if (shape.kind === "poly") return shape.points.length >= 3;
+      return shape.points.length > 0;
+    }
+
+    function finishPoly(cancelled) {
+      var shape = drawing;
+      drawing = null;
+      if (!cancelled && shape && validShape(shape)) sendShape(shape);
+      else drawFog();
     }
 
     boardEl.addEventListener("pointerdown", function (event) {
@@ -718,12 +884,27 @@
         return;
       }
 
-      if (state.is_master && (mode === "reveal" || mode === "cover")) {
+      if (state.is_master && mode.indexOf("fog-") === 0) {
         event.preventDefault();
-        paint = { pointer: event.pointerId };
-        painting = { mode: mode, size: brushSize(), points: [] };
+        var kind = mode.slice(4);
+        if (kind === "pick") {
+          var hit = shapeAt(fogPoint(event, true));
+          selectShape(hit && hit.id !== selectedShape ? hit.id : null);
+          return;
+        }
+        if (kind === "poly") {
+          if (!drawing) drawing = { kind: "poly", size: 1, cut: cutNow(), points: [], live: null };
+          drawing.points.push(fogPoint(event));
+          drawFog();
+          return;
+        }
+        var start = fogPoint(event, kind === "brush");
+        paint = { pointer: event.pointerId, kind: kind };
+        drawing = kind === "brush"
+          ? { kind: "brush", size: brushSize(), cut: cutNow(), points: [start] }
+          : { kind: kind, size: 0.1, cut: cutNow(), points: kind === "rect" ? [start, start] : [start] };
         capture(event);
-        paintPoint(pointAt(event, false));
+        drawFog();
         return;
       }
 
@@ -774,7 +955,24 @@
         return;
       }
       if (paint && event.pointerId === paint.pointer) {
-        paintPoint(pointAt(event, false));
+        var point = fogPoint(event, paint.kind === "brush");
+        if (paint.kind === "rect") {
+          drawing.points[1] = point;
+        } else if (paint.kind === "circle") {
+          var ex = point[0] - drawing.points[0][0], ey = point[1] - drawing.points[0][1];
+          drawing.size = Math.max(0.1, Math.min(state.brush || 12, Math.sqrt(ex * ex + ey * ey)));
+        } else {
+          // Só guarda pontos que andaram: um traço parado não vira 400 pontos.
+          var last = drawing.points[drawing.points.length - 1];
+          if (Math.abs(last[0] - point[0]) + Math.abs(last[1] - point[1]) < 0.08) return;
+          drawing.points.push(point);
+        }
+        drawFog();
+        return;
+      }
+      if (drawing && drawing.kind === "poly") {        // próxima quina no mouse
+        drawing.live = fogPoint(event);
+        drawFog();
         return;
       }
       if (!drag || event.pointerId !== drag.pointer) return;
@@ -804,15 +1002,11 @@
         return;
       }
       if (paint && event.pointerId === paint.pointer) {
-        var stroke = painting;
+        var shape = drawing;
         paint = null;
-        painting = null;
-        if (!cancelled && stroke && stroke.points.length) {
-          send(urls.fog, { reveal: stroke.mode === "reveal", size: stroke.size,
-                           points: stroke.points });
-        } else {
-          drawFog();
-        }
+        drawing = null;
+        if (!cancelled && shape && validShape(shape)) sendShape(shape);
+        else drawFog();
         return;
       }
       if (!drag || event.pointerId !== drag.pointer) return;
@@ -852,7 +1046,9 @@
     });
 
     function setMode(next, shape) {
+      if (drawing && drawing.kind === "poly") finishPoly(true);
       mode = next;
+      if (next !== "fog-pick" && selectedShape) selectShape(null);
       areaShapeNow = next === "area" ? shape : null;
       panel.querySelectorAll("[data-board-mode]").forEach(function (button) {
         button.classList.toggle("active", button.dataset.boardMode === mode);
@@ -864,12 +1060,13 @@
       if (mode === "area") info.textContent = "Clique no mapa" +
         (shape === "circle" ? " no centro da área" : " na origem e arraste para mirar");
       else if (mode === "marker") info.textContent = "Clique no quadrado do marcador";
-      else if (mode === "reveal" || mode === "cover") {
-        info.textContent = (mode === "reveal" ? "Pinte para revelar" : "Pinte para cobrir") +
-          " — arraste no mapa; o tamanho do pincel está na barra.";
-      }
+      else if (mode.indexOf("fog-") === 0) fogInfo();
       else if (state) info.textContent = hint();
     }
+
+    panel.addEventListener("change", function (event) {
+      if (event.target.matches("[data-fog-cut]") && mode.indexOf("fog-") === 0) fogInfo();
+    });
 
     panel.addEventListener("click", function (event) {
       var button = event.target.closest("[data-board-action], [data-board-mode], [data-area-shape]");
@@ -892,9 +1089,21 @@
         var full = panel.classList.toggle("board-full");
         document.body.classList.toggle("board-lock", full);
         button.textContent = full ? "✕ Sair da tela cheia" : "⛶ Tela cheia";
-      } else if (action === "reveal-all" || action === "cover-all") {
-        if (action === "cover-all" && !confirm("Cobrir o mapa inteiro de névoa?")) return;
-        send(urls.fog, { all: true, reveal: action === "reveal-all" });
+      } else if (action === "fog-fill") {
+        send(urls.fog, { op: "fill", value: !(state.fog_layer || {}).fill });
+      } else if (action === "fog-clear") {
+        if (!confirm("Apagar toda a névoa deste mapa?")) return;
+        selectedShape = null;
+        send(urls.fog, { op: "clear" });
+      } else if (action === "fog-cut" || action === "fog-uncut" || action === "fog-remove") {
+        if (!selectedShape) return;
+        var shapeId = selectedShape;
+        if (action === "fog-remove") selectedShape = null;
+        send(urls.fog, { op: action.slice(4), id: shapeId });
+      } else if (action === "fog-preview") {
+        preview = !preview;
+        button.classList.toggle("active", preview);
+        drawFog();
       } else if (action === "undo") {
         send(urls.undo, {});
       } else if (action === "fit-image") {
@@ -928,7 +1137,31 @@
       placeSelected({ x: token.x + step[0], y: token.y + step[1] });
     });
 
+    boardEl.addEventListener("dblclick", function (event) {
+      if (!state || readonly || !state.is_master) return;
+      if (drawing && drawing.kind === "poly") { event.preventDefault(); finishPoly(false); return; }
+      if (mode === "fog-pick" && selectedShape) {     // duplo clique revela/cobre a sala
+        event.preventDefault();
+        send(urls.fog, { op: "toggle", id: selectedShape });
+      }
+    });
+
     document.addEventListener("keydown", function (event) {
+      if (window.__lastBoard && window.__lastBoard !== panel) return;
+      if (typing() || readonly || !state) return;
+      if (event.key === "Enter" && drawing && drawing.kind === "poly") {
+        event.preventDefault();
+        finishPoly(false);
+        return;
+      }
+      if (selectedShape && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        var gone = selectedShape;
+        selectedShape = null;
+        send(urls.fog, { op: "remove", id: gone });
+        return;
+      }
+      if (event.key === "Escape" && drawing) { finishPoly(true); return; }
       if (event.key === "Escape" && mode !== "move") { aiming = null; setMode("move"); render(); return; }
       if (event.key === "Escape" && panel.classList.contains("board-full")) {
         panel.querySelector("[data-board-action=full]").click();
@@ -955,7 +1188,7 @@
     if (window.Live && window.Live.enabled && owner) {
       // Novidades do mapa chegam junto com o resto da página (uma requisição só).
       var liveHandle = window.Live.register("board", owner.dataset.encounterId + (view ? "." + view : ""), function (data) {
-        if (busy || drag || paint || aiming) { liveHandle.reset(); return; }
+        if (busy || drag || paint || drawing || aiming) { liveHandle.reset(); return; }
         adopt(data);
       }, { fast: true });
       afterSend = function () { liveHandle.reset(); };

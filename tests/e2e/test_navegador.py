@@ -220,7 +220,7 @@ def test_nevoa_pintada_com_o_mouse(table):
     panel.locator("[data-board-config] [name=rows]").fill("12,4")
     panel.locator("[data-board-config] [name=rows]").press("Tab")
     panel.locator("[data-board-config] [name=fog]").check()
-    expect(panel.locator("[data-board-mode=reveal]")).to_be_visible()
+    expect(panel.locator("[data-board-mode=fog-brush]")).to_be_visible()
 
     # O número do combate muda conforme os testes anteriores: leia da própria página.
     encounter_id = card.get_attribute("data-encounter-id")
@@ -237,7 +237,9 @@ def test_nevoa_pintada_com_o_mouse(table):
     surface.click(position={"x": cell * 3.5, "y": cell * 3.5})
     expect(panel.locator(".board-tokens .token")).to_have_count(1)
 
-    panel.locator("[data-board-mode=reveal]").click()
+    # Névoa por formas: a caixinha "corta" faz a forma nova abrir buraco.
+    panel.locator("[data-fog-cut]").check()
+    panel.locator("[data-board-mode=fog-brush]").click()
     # Mede o mapa na hora e pinta perto do topo: coordenada do mouse é da janela,
     # e pôr a ficha mudou a altura da barra acima do mapa.
     surface.scroll_into_view_if_needed()
@@ -249,17 +251,25 @@ def test_nevoa_pintada_com_o_mouse(table):
     page.mouse.up()
     page.wait_for_timeout(1200)
     layer = estado()["fog_layer"]
-    assert layer["base"] == "cover" and len(layer["strokes"]) == 1
-    assert layer["strokes"][0]["mode"] == "reveal" and len(layer["strokes"][0]["points"]) > 1
+    assert layer["fill"] is True and len(layer["shapes"]) == 1
+    assert layer["shapes"][0]["kind"] == "brush" and layer["shapes"][0]["cut"] is True
+    assert len(layer["shapes"][0]["points"]) > 1
 
-    # O ghoul está fora do traço: a jogadora não o vê.
+    # O ghoul está fora da forma cortada: a jogadora não o vê.
     player = ana.go("/campanhas/%d/combate" % camp)
     expect(player.locator("[data-board] .board-tokens .token")).to_have_count(0, timeout=LIVE)
 
-    # Pintando em cima dele, aparece.
+    # Cortando em cima dele, aparece.
     box = surface.bounding_box()
     page.mouse.move(box["x"] + cell * 4, box["y"] + cell * 3.5)
     page.mouse.down()
     page.mouse.move(box["x"] + cell * 4.2, box["y"] + cell * 3.6)
     page.mouse.up()
     expect(player.locator("[data-board] .board-tokens .token")).to_have_count(1, timeout=LIVE)
+
+    # Fim da cena: seleciona a forma e manda cobrir de novo — sem redesenhar.
+    panel.locator("[data-board-mode=fog-pick]").click()
+    surface.click(position={"x": cell * 4.1, "y": cell * 3.55})
+    expect(panel.locator("[data-fog-shape-tools]")).to_be_visible()
+    panel.locator("[data-board-action=fog-uncut]").click()
+    expect(player.locator("[data-board] .board-tokens .token")).to_have_count(0, timeout=LIVE)

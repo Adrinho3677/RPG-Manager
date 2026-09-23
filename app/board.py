@@ -10,10 +10,15 @@ O estado fica em Encounter.board (JSON):
     cell_size     quanto vale um quadrado (1.5) ...
     cell_unit     ... e em que unidade ("m")
     fog           névoa de guerra ligada
-    revealed      quadrados revelados (névoa antiga, por quadrado) — "x,y"
-    fog_layer     névoa pintada à mão: {"base": "cover"|"reveal", "strokes": [...]},
-                  cada traço {"mode": "reveal"|"cover", "size": raio em quadrados,
-                  "points": [[x, y], ...]} — salas redondas sem virar escadinha
+    revealed      névoa antiga, por quadrado ("x,y"); ao abrir vira forma cortada
+    fog_layer     névoa por formas, no estilo do Owlbear Rodeo:
+                  {"fill": bool, "shapes": [...]}. `fill` cobre o mapa inteiro.
+                  Cada forma: {"id", "kind": rect|poly|circle|brush, "points":
+                  [[x, y], ...], "size": raio (círculo/pincel), "cut": bool}.
+                  Forma comum põe névoa; forma "cortada" (cut) abre buraco em
+                  toda a névoa — é assim que o mestre prepara as salas antes e,
+                  na hora do jogo, revela cada uma com um clique (e cobre de
+                  novo).
     players_move  jogadores podem mover as próprias fichas
     tokens        {uid do combatente: {"x", "y", "hidden"}}
     areas         áreas de efeito [{id, shape (circle|cone|line), ox, oy, angle, size,
@@ -46,7 +51,7 @@ DEFAULTS = {
     "cell_unit": "m",
     "fog": False,
     "revealed": [],
-    "fog_layer": {"base": "cover", "strokes": []},
+    "fog_layer": {"fill": False, "shapes": []},
     "players_move": True,
     "tokens": {},
     "areas": [],
@@ -55,8 +60,9 @@ DEFAULTS = {
     "version": 0,
 }
 MAX_TOKEN_SIZE = 4   # criaturas grandes ocupam 2×2, 3×3 ou 4×4 quadrados
-MAX_STROKES = 500          # traços de névoa guardados
-MAX_STROKE_POINTS = 400    # pontos de um traço
+FOG_KINDS = ("rect", "poly", "circle", "brush")
+MAX_FOG_SHAPES = 300       # formas de névoa num mapa
+MAX_SHAPE_POINTS = 400     # pontos de uma forma (polígono ou traço de pincel)
 MAX_TOTAL_POINTS = 12000   # soma de todos: o JSON do mapa não pode crescer sem fim
 MAX_BRUSH = 12             # raio do pincel, em quadrados
 MAX_HISTORY = 30
@@ -119,8 +125,9 @@ def normalize(raw):
             continue
         if 0 <= x < wide and 0 <= y < high:
             revealed.add(_cell(x, y))
-    board["revealed"] = sorted(revealed)
-    board["fog_layer"] = _clean_layer(raw.get("fog_layer"))
+    # Quadrados revelados da névoa antiga viram formas cortadas, uma única vez.
+    board["fog_layer"] = _clean_layer(raw.get("fog_layer"), sorted(revealed))
+    board["revealed"] = []
 
     tokens = {}
     for uid, pos in (raw.get("tokens") or {}).items():
@@ -199,6 +206,11 @@ def configure(board, payload, map_ids):
     for key in ("grid", "fog", "players_move"):
         if key in payload:
             board[key] = bool(payload.get(key))
+    # Ligar a névoa num mapa ainda sem forma nenhuma cobre tudo: o mestre depois
+    # vai abrindo as salas. Ninguém liga a névoa para continuar vendo o mapa.
+    layer = board["fog_layer"]
+    if board["fog"] and not layer["fill"] and not layer["shapes"]:
+        layer["fill"] = True
     # Grade menor: fichas que ficaram de fora vão para a borda e a névoa
     # revelada fora da grade é descartada.
     return normalize(board)
@@ -284,74 +296,136 @@ def parse_speed(text, cell_size):
     return round(value / cell_size, 2) if value > 0 else None
 
 
-def _clean_layer(raw):
-    """Camada de névoa válida (traços dentro dos limites)."""
-    raw = raw if isinstance(raw, dict) else {}
-    strokes, total = [], 0
-    for item in (raw.get("strokes") or [])[-MAX_STROKES:]:
-        if not isinstance(item, dict) or item.get("mode") not in ("reveal", "cover"):
-            continue
-        points = []
-        for point in (item.get("points") or [])[:MAX_STROKE_POINTS]:
-            try:
-                points.append([round(float(point[0]), 3), round(float(point[1]), 3)])
-            except (TypeError, ValueError, IndexError):
-                continue
-        if not points or total + len(points) > MAX_TOTAL_POINTS:
-            continue
-        total += len(points)
-        size = to_float(item.get("size"), 1)
-        strokes.append({"mode": item["mode"], "size": min(MAX_BRUSH, max(0.05, size)),
-                        "points": points})
-    base = "reveal" if raw.get("base") == "reveal" else "cover"
-    return {"base": base, "strokes": strokes}
-
-
-def paint_fog(board, payload):
-    """Guarda um traço de pincel (ou uma lista de quadrados, da névoa antiga)."""
-    layer = board["fog_layer"]
-    mode = "reveal" if payload.get("reveal") else "cover"
-
+def _points(raw, limit=MAX_SHAPE_POINTS):
     points = []
-    for point in (payload.get("points") or [])[:MAX_STROKE_POINTS]:
+    for point in (raw or [])[:limit]:
         try:
             points.append([round(float(point[0]), 3), round(float(point[1]), 3)])
         except (TypeError, ValueError, IndexError):
             continue
-    if points:
-        if sum(len(s["points"]) for s in layer["strokes"]) + len(points) > MAX_TOTAL_POINTS:
-            raise BoardError("A névoa deste mapa já tem pintura demais. Use “Cobrir tudo” "
-                             "(ou “Revelar tudo”) e pinte de novo.")
-        size = min(MAX_BRUSH, max(0.05, to_float(payload.get("size"), 1)))
-        layer["strokes"].append({"mode": mode, "size": size, "points": points})
-        del layer["strokes"][:-MAX_STROKES]
+    return points
+
+
+def _clean_shape(raw):
+    """Uma forma de névoa válida, ou None."""
+    if not isinstance(raw, dict):
+        return None
+    kind = raw.get("kind")
+    if kind not in FOG_KINDS:
+        # Formato antigo (pincel com "mode"): revelar virou forma cortada.
+        if raw.get("mode") in ("reveal", "cover"):
+            kind, raw = "brush", dict(raw, cut=raw["mode"] == "reveal")
+        else:
+            return None
+    points = _points(raw.get("points"))
+    needed = {"rect": 2, "poly": 3, "circle": 1, "brush": 1}[kind]
+    if len(points) < needed:
+        return None
+    if kind == "rect":
+        (x0, y0), (x1, y1) = points[0], points[1]
+        points = [[min(x0, x1), min(y0, y1)], [max(x0, x1), max(y0, y1)]]
+    size = to_float(raw.get("size"), 1)
+    return {
+        "id": str(raw.get("id") or "")[:16] or secrets.token_hex(4),
+        "kind": kind,
+        "points": points[:2] if kind == "rect" else (points[:1] if kind == "circle" else points),
+        "size": min(MAX_BRUSH, max(0.05, size)),
+        "cut": bool(raw.get("cut")),
+    }
+
+
+def _clean_layer(raw, legacy_cells=()):
+    """Camada de névoa válida. Converte a névoa antiga (quadrados revelados)."""
+    raw = raw if isinstance(raw, dict) else {}
+    shapes, total = [], 0
+    for item in (raw.get("shapes") or raw.get("strokes") or [])[:MAX_FOG_SHAPES]:
+        shape = _clean_shape(item)
+        if shape is None or total + len(shape["points"]) > MAX_TOTAL_POINTS:
+            continue
+        total += len(shape["points"])
+        shapes.append(shape)
+    for cell in legacy_cells:                      # "x,y" revelado antigamente
+        try:
+            x, y = (int(part) for part in cell.split(","))
+        except ValueError:
+            continue
+        shapes.append({"id": secrets.token_hex(4), "kind": "rect",
+                       "points": [[x, y], [x + 1, y + 1]], "size": 1, "cut": True})
+    fill = bool(raw.get("fill") or raw.get("base") == "cover")
+    return {"fill": fill, "shapes": shapes[:MAX_FOG_SHAPES]}
+
+
+def _find_shape(board, shape_id):
+    for shape in board["fog_layer"]["shapes"]:
+        if shape["id"] == str(shape_id):
+            return shape
+    raise BoardError("Essa forma de névoa não está mais no mapa.")
+
+
+def fog_change(board, payload):
+    """Uma ação da ferramenta de névoa (ver o modelo no topo do arquivo)."""
+    layer = board["fog_layer"]
+    op = payload.get("op") or ("add" if payload.get("points") else "")
+
+    if op == "add":
+        if len(layer["shapes"]) >= MAX_FOG_SHAPES:
+            raise BoardError("Este mapa já tem formas de névoa demais.")
+        shape = _clean_shape(dict(payload, id=None))
+        if shape is None:
+            raise BoardError("Forma de névoa inválida.")
+        if (sum(len(s["points"]) for s in layer["shapes"]) + len(shape["points"])
+                > MAX_TOTAL_POINTS):
+            raise BoardError("A névoa deste mapa está complexa demais: apague algumas formas.")
+        layer["shapes"].append(shape)
         return board
 
-    # Névoa antiga (quadrados inteiros) — ainda usada por quem pinta com o teclado.
-    revealed = set(board["revealed"])
-    wide, high = cells_across(board["cols"]), cells_across(board["rows"])
-    for item in (payload.get("cells") or [])[:MAX_SIDE * MAX_SIDE]:
-        try:
-            x, y = int(item[0]), int(item[1])
-        except (TypeError, ValueError, IndexError):
-            continue
-        if 0 <= x < wide and 0 <= y < high:
-            (revealed.add if mode == "reveal" else revealed.discard)(_cell(x, y))
-    board["revealed"] = sorted(revealed)
-    return board
+    if op in ("cut", "uncut", "toggle"):
+        shape = _find_shape(board, payload.get("id"))
+        shape["cut"] = not shape["cut"] if op == "toggle" else op == "cut"
+        return board
+
+    if op == "remove":
+        layer["shapes"].remove(_find_shape(board, payload.get("id")))
+        return board
+
+    if op == "fill":
+        layer["fill"] = bool(payload.get("value", True))
+        return board
+
+    if op == "clear":                    # tira tudo: mapa inteiro à vista
+        board["fog_layer"] = {"fill": False, "shapes": []}
+        board["revealed"] = []
+        return board
+
+    raise BoardError("Ação de névoa desconhecida.")
 
 
-def fog_all(board, reveal):
-    """Revela ou cobre o mapa inteiro: limpa a pintura e começa de novo."""
-    board["revealed"] = []
-    board["fog_layer"] = {"base": "reveal" if reveal else "cover", "strokes": []}
-    return board
+# ------------------------------------------------- onde a névoa cobre
+def _in_rect(shape, x, y):
+    (x0, y0), (x1, y1) = shape["points"]
+    return x0 <= x <= x1 and y0 <= y <= y1
 
 
-def _near_stroke(stroke, x, y):
-    """O ponto está dentro do traço (distância até a linha ≤ raio do pincel)?"""
-    radius = stroke["size"]
-    points = stroke["points"]
+def _in_circle(shape, x, y):
+    cx, cy = shape["points"][0]
+    return (x - cx) ** 2 + (y - cy) ** 2 <= shape["size"] ** 2
+
+
+def _in_poly(shape, x, y):
+    """Ponto dentro do polígono (raio para a direita, conta cruzamentos)."""
+    points = shape["points"]
+    inside = False
+    for index, (px, py) in enumerate(points):
+        qx, qy = points[(index + 1) % len(points)]
+        if (py > y) != (qy > y):
+            cut_x = px + (y - py) * (qx - px) / ((qy - py) or 1e-9)
+            if x < cut_x:
+                inside = not inside
+    return inside
+
+
+def _in_brush(shape, x, y):
+    radius, points = shape["size"], shape["points"]
     for index, (px, py) in enumerate(points):
         dx, dy = x - px, y - py
         if dx * dx + dy * dy <= radius * radius:
@@ -368,14 +442,24 @@ def _near_stroke(stroke, x, y):
     return False
 
 
+_INSIDE = {"rect": _in_rect, "circle": _in_circle, "poly": _in_poly, "brush": _in_brush}
+
+
+def covers(shape, x, y):
+    return _INSIDE[shape["kind"]](shape, x, y)
+
+
 def is_revealed(board, x, y):
-    """Aquele ponto (em quadrados) está revelado? Último traço por cima manda."""
-    for stroke in reversed(board["fog_layer"]["strokes"]):
-        if _near_stroke(stroke, x, y):
-            return stroke["mode"] == "reveal"
-    if _cell(int(x), int(y)) in board["revealed"]:
-        return True
-    return board["fog_layer"]["base"] == "reveal"
+    """Aquele ponto está à vista? Forma cortada vence toda a névoa (como no Owlbear)."""
+    layer = board["fog_layer"]
+    covered = layer["fill"]
+    for shape in layer["shapes"]:
+        if shape["cut"]:
+            if covers(shape, x, y):
+                return True
+        elif not covered and covers(shape, x, y):
+            covered = True
+    return not covered
 
 
 def add_area(board, payload, user):
@@ -453,9 +537,8 @@ def change_marker(board, payload):
 def fog_key(board):
     """Resumo do que está revelado: muda a URL da imagem recortada."""
     import json
-    raw = "%s|%s|%s|%s|%s" % (board["map_id"], board["cols"], board["rows"],
-                              ";".join(board["revealed"]),
-                              json.dumps(board["fog_layer"], sort_keys=True))
+    raw = "%s|%s|%s|%s" % (board["map_id"], board["cols"], board["rows"],
+                           json.dumps(board["fog_layer"], sort_keys=True))
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -578,8 +661,8 @@ def view(encounter, state, user, is_master, maps):
         "cell_unit": board["cell_unit"],
         "fog": board["fog"],
         "players_move": board["players_move"],
-        "revealed": board["revealed"] if board["fog"] else [],
-        "fog_layer": board["fog_layer"] if board["fog"] else {"base": "reveal", "strokes": []},
+        "revealed": [],
+        "fog_layer": board["fog_layer"] if board["fog"] else {"fill": False, "shapes": []},
         "brush": MAX_BRUSH,
         "tokens": tokens,
         "bench": bench,
