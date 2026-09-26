@@ -447,20 +447,25 @@ def test_nevoa_antiga_por_quadrados_vira_forma(mesa):
     mestre, ana = mesa.user("mestre"), mesa.user("ana")
     mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 3, "y": 3})
     mestre.post(base + "/mapa/configurar", json={"fog": True})
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 2"], "x": 10, "y": 10})
     with mesa.app.app_context():
         from app.extensions import db
         from app.models import Encounter
         encounter = Encounter.query.one()
         board = dict(encounter.board)
-        board["revealed"] = ["3,3"]                     # como o banco antigo guardava
-        board["fog_layer"] = {"base": "cover", "strokes": []}
+        board["revealed"] = ["3,3", "4,3"]     # como o banco antigo guardava
+        board.pop("fog_layer", None)           # e lá nem existia camada de névoa
         encounter.board = board
         db.session.commit()
 
+    # Na névoa antiga tudo era coberto e `revealed` abria os buracos: o resto do
+    # mapa não pode aparecer só porque o modelo mudou.
     assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
     state = mestre.get(base + "/mapa").get_json()
     assert state["fog_layer"]["fill"] is True
-    assert [(s["kind"], s["cut"]) for s in state["fog_layer"]["shapes"]] == [("rect", True)]
+    # Os dois quadrados vizinhos viram um retângulo só.
+    assert [(s["kind"], s["cut"], s["points"]) for s in state["fog_layer"]["shapes"]] == [
+        ("rect", True, [[3, 3], [5, 4]])]
 
 
 def test_limite_de_formas(mesa):

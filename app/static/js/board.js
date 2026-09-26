@@ -827,6 +827,10 @@
       panel.querySelectorAll("[data-fog-shape-tools]").forEach(function (box) {
         box.hidden = !(state && state.fog && selectedShape);
       });
+      // "Cobrir tudo" liga e desliga: aceso = o mapa inteiro está coberto. Sem
+      // isso o mestre clica achando que cobre e acaba descobrindo tudo.
+      var fill = panel.querySelector("[data-board-action=fog-fill]");
+      if (fill) fill.classList.toggle("active", !!(state && (state.fog_layer || {}).fill));
     }
 
     function selectShape(id) {

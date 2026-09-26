@@ -334,6 +334,42 @@ def _clean_shape(raw):
     }
 
 
+LAYER_KEYS = ("fill", "base", "shapes", "strokes")
+
+
+def _cut_rect(x0, y0, x1, y1):
+    return {"id": secrets.token_hex(4), "kind": "rect",
+            "points": [[x0, y0], [x1, y1]], "size": 1, "cut": True}
+
+
+def _legacy_shapes(cells):
+    """Quadrados revelados da névoa antiga viram buracos na névoa.
+
+    Junta os vizinhos de cada linha num retângulo só: um mapa inteiro revelado
+    viraria centenas de formas e esbarraria no teto de MAX_FOG_SHAPES.
+    """
+    rows = {}
+    for cell in cells:
+        try:
+            x, y = (int(part) for part in str(cell).split(","))
+        except ValueError:
+            continue
+        rows.setdefault(y, set()).add(x)
+    shapes = []
+    for y in sorted(rows):
+        start = last = None
+        for x in sorted(rows[y]):
+            if last is not None and x == last + 1:
+                last = x
+                continue
+            if start is not None:
+                shapes.append(_cut_rect(start, y, last + 1, y + 1))
+            start = last = x
+        if start is not None:
+            shapes.append(_cut_rect(start, y, last + 1, y + 1))
+    return shapes
+
+
 def _clean_layer(raw, legacy_cells=()):
     """Camada de névoa válida. Converte a névoa antiga (quadrados revelados)."""
     raw = raw if isinstance(raw, dict) else {}
@@ -344,14 +380,13 @@ def _clean_layer(raw, legacy_cells=()):
             continue
         total += len(shape["points"])
         shapes.append(shape)
-    for cell in legacy_cells:                      # "x,y" revelado antigamente
-        try:
-            x, y = (int(part) for part in cell.split(","))
-        except ValueError:
-            continue
-        shapes.append({"id": secrets.token_hex(4), "kind": "rect",
-                       "points": [[x, y], [x + 1, y + 1]], "size": 1, "cut": True})
-    fill = bool(raw.get("fill") or raw.get("base") == "cover")
+    shapes.extend(_legacy_shapes(legacy_cells))
+    if any(key in raw for key in LAYER_KEYS):
+        fill = bool(raw.get("fill") or raw.get("base") == "cover")
+    else:
+        # Mapa salvo antes das formas: lá a névoa cobria tudo e `revealed` abria
+        # os buracos. Sem isto o mapa inteiro apareceria para os jogadores.
+        fill = True
     return {"fill": fill, "shapes": shapes[:MAX_FOG_SHAPES]}
 
 
