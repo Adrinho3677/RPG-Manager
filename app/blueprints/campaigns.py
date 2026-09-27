@@ -1341,6 +1341,8 @@ def board_area(campaign_id, encounter_id):
     op = payload.get("op")
     if op == "add":
         change = lambda b: board_helper.add_area(b, payload, current_user)
+    elif op == "update":
+        change = lambda b: board_helper.update_area(b, payload, current_user, is_master)
     elif op == "remove":
         change = lambda b: board_helper.remove_area(b, str(payload.get("id")), current_user, is_master)
     elif op == "clear" and is_master:

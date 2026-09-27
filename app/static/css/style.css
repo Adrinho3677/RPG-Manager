@@ -625,7 +625,19 @@ a.user-chip:hover { text-decoration: none; border-color: var(--accent); }
 /* Camadas cobrem o mapa inteiro mas deixam o clique passar; só as peças o recebem. */
 .board-tokens, .board-markers { position: absolute; inset: 0; pointer-events: none; }
 .token, .marker { pointer-events: auto; }
-.board-areas, .board-draw { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.board-areas, .board-draw, .board-handles { position: absolute; left: 0; top: 0;
+  pointer-events: none; overflow: visible; }
+.board-handles .handle { fill: var(--accent-2); stroke: #0b0a12; stroke-width: 1px;
+  vector-effect: non-scaling-stroke; pointer-events: auto; cursor: grab; }
+.board-handles .handle:hover { fill: #fff; }
+.board-handles .handle-move { fill: #7ee0b8; }
+.board-handles .handle-rotate, .board-handles .handle-area-aim { fill: #c49bff; }
+.board-handles .handle-line { stroke: var(--accent-2); stroke-width: 1px; stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke; }
+.board-handles .handle-frame { fill: none; stroke: var(--accent-2); stroke-width: 1px;
+  stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.board-areas .area.is-picked { stroke-dasharray: .18 .1; }
+.area-row.is-selected { outline: 1px solid var(--accent-2); border-radius: 6px; }
 .board-draw .drawing { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .draw-color { width: 2rem; height: 1.7rem; padding: 0; border: 1px solid var(--line);
   border-radius: 6px; background: none; cursor: pointer; }

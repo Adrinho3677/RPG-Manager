@@ -364,6 +364,73 @@ def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
     assert mesa.user("intruso").get(visto["map_url"]).status_code == 403
 
 
+# ------------------------------------------ ajustar o que já está no mapa
+def test_ajustar_a_area_depois_de_posta(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana, bia = mesa.user("mestre"), mesa.user("ana"), mesa.user("bia")
+    posta = ana.post(base + "/mapa/area", json={"op": "add", "shape": "cone", "ox": 4, "oy": 4,
+                                                "angle": 0, "size": 6}).get_json()
+    area = posta["areas"][0]
+
+    # Girar, esticar e arrastar — tudo na mesma área, sem criar outra.
+    state = ana.post(base + "/mapa/area", json={"op": "update", "id": area["id"], "angle": 450,
+                                                "size": 9, "ox": 5.5, "oy": 7}).get_json()
+    depois = state["areas"][0]
+    assert len(state["areas"]) == 1 and depois["id"] == area["id"]
+    assert (depois["angle"], depois["size"], depois["ox"], depois["oy"]) == (90.0, 9.0, 5.5, 7.0)
+
+    # Quem não pôs não mexe; o mestre mexe em qualquer uma.
+    negado = bia.post(base + "/mapa/area", json={"op": "update", "id": area["id"], "size": 2})
+    assert negado.status_code == 400 and "Só quem pôs a área" in negado.get_json()["message"]
+    assert mestre.post(base + "/mapa/area",
+                       json={"op": "update", "id": area["id"], "size": 2}).get_json()["areas"][0]["size"] == 2
+
+    # Limites continuam valendo, e fora do mapa entra na marra.
+    torto = ana.post(base + "/mapa/area", json={"op": "update", "id": area["id"], "size": 0})
+    assert torto.status_code == 400
+    state = ana.post(base + "/mapa/area", json={"op": "update", "id": area["id"], "ox": 999}).get_json()
+    assert state["areas"][0]["ox"] == 20.0
+
+    sumida = ana.post(base + "/mapa/area", json={"op": "update", "id": "xx", "size": 3})
+    assert sumida.status_code == 400 and "já saiu do mapa" in sumida.get_json()["message"]
+
+
+def test_ajustar_a_forma_de_nevoa_depois_de_desenhada(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post(base + "/mapa/mover", json={"uid": uids["Ghoul 1"], "x": 10, "y": 10})
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    sala = forma(mestre, base, "rect", [[2, 2], [6, 6]]).get_json()["fog_layer"]["shapes"][0]
+    assert ana.get(base + "/mapa").get_json()["tokens"] == []
+
+    # Arrastar a sala revelada para cima do ghoul: mesma forma, lugar novo.
+    state = mestre.post(base + "/mapa/nevoa", json={
+        "op": "shape", "id": sala["id"], "points": [[9, 9], [13, 13]]}).get_json()
+    movida = state["fog_layer"]["shapes"][0]
+    assert len(state["fog_layer"]["shapes"]) == 1
+    assert (movida["id"], movida["kind"], movida["cut"]) == (sala["id"], "rect", True)
+    assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
+
+    # Girar um retângulo o transforma em polígono, sem perder o corte.
+    state = mestre.post(base + "/mapa/nevoa", json={
+        "op": "shape", "id": sala["id"], "kind": "poly",
+        "points": [[11, 8], [14, 11], [11, 14], [8, 11]]}).get_json()
+    girada = state["fog_layer"]["shapes"][0]
+    assert (girada["kind"], girada["cut"], girada["id"]) == ("poly", True, sala["id"])
+    assert [t["name"] for t in ana.get(base + "/mapa").get_json()["tokens"]] == ["Ghoul 1"]
+
+    torta = mestre.post(base + "/mapa/nevoa", json={"op": "shape", "id": sala["id"],
+                                                    "kind": "poly", "points": [[1, 1]]})
+    assert torta.status_code == 400 and "inválida" in torta.get_json()["message"]
+
+    sumida = mestre.post(base + "/mapa/nevoa", json={"op": "shape", "id": "xx", "points": [[1, 1], [2, 2]]})
+    assert sumida.status_code == 400
+
+    # Jogador não mexe na névoa.
+    assert ana.post(base + "/mapa/nevoa", json={"op": "shape", "id": sala["id"],
+                                                "points": [[0, 0], [1, 1]]}).status_code == 403
+
+
 # ------------------------------------------------------- desenho livre no mapa
 def rabisco(client, base, points, color="#ff0044", width=0.12):
     return client.post(base + "/mapa/desenho",

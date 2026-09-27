@@ -444,6 +444,19 @@ def fog_change(board, payload):
         layer["shapes"].append(shape)
         return board
 
+    if op == "shape":            # arrastou, girou ou esticou uma forma
+        shape = _find_shape(board, payload.get("id"))
+        # Girar um retângulo o transforma em polígono: por isso `kind` vem junto.
+        moved = _clean_shape(dict(payload, id=shape["id"], cut=shape["cut"],
+                                  kind=payload.get("kind") or shape["kind"]))
+        if moved is None:
+            raise BoardError("Forma de névoa inválida.")
+        outras = sum(len(s["points"]) for s in layer["shapes"] if s["id"] != shape["id"])
+        if outras + len(moved["points"]) > MAX_TOTAL_POINTS:
+            raise BoardError("A névoa deste mapa está complexa demais: apague algumas formas.")
+        layer["shapes"][layer["shapes"].index(shape)] = moved
+        return board
+
     if op in ("cut", "uncut", "toggle"):
         shape = _find_shape(board, payload.get("id"))
         shape["cut"] = not shape["cut"] if op == "toggle" else op == "cut"
@@ -547,10 +560,34 @@ def add_area(board, payload, user):
     return board
 
 
-def remove_area(board, area_id, user, is_master):
+def update_area(board, payload, user, is_master):
+    """Mexer numa área já posta: arrastar, girar, aumentar."""
+    area = _find_area(board, str(payload.get("id")))
+    if not is_master and area["owner"] != user.id:
+        raise BoardError("Só quem pôs a área (ou o mestre) pode mexer nela.")
+    if "size" in payload:
+        size = to_float(payload.get("size"), 0)
+        if not 0 < size <= MAX_SIDE * 2:
+            raise BoardError("Tamanho da área inválido.")
+        area["size"] = round(size, 3)
+    if "ox" in payload:
+        area["ox"] = round(_clamp(to_float(payload.get("ox"), area["ox"]), 0, board["cols"]), 3)
+    if "oy" in payload:
+        area["oy"] = round(_clamp(to_float(payload.get("oy"), area["oy"]), 0, board["rows"]), 3)
+    if "angle" in payload:
+        area["angle"] = round(to_float(payload.get("angle"), area["angle"]) % 360, 2)
+    return board
+
+
+def _find_area(board, area_id):
     area = next((a for a in board["areas"] if a["id"] == area_id), None)
     if area is None:
         raise BoardError("Essa área já saiu do mapa.")
+    return area
+
+
+def remove_area(board, area_id, user, is_master):
+    area = _find_area(board, area_id)
     if not is_master and area["owner"] != user.id:
         raise BoardError("Só quem pôs a área (ou o mestre) pode tirá-la.")
     board["areas"].remove(area)

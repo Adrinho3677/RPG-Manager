@@ -112,6 +112,7 @@
     var view = panel.dataset.view || "";             // "mesa": visão dos jogadores
     var markerLayer = panel.querySelector("[data-board-markers]");
     var areaLayer = panel.querySelector("[data-board-areas]");
+    var handleLayer = panel.querySelector("[data-board-handles]");
     var drawLayer = panel.querySelector("[data-board-draw]");
     var areaList = panel.querySelector("[data-board-area-list]");
     var sizeInput = panel.querySelector("[data-area-size]");
@@ -119,6 +120,8 @@
     var aiming = null;         // área sendo mirada agora
     var drawing = null;        // forma de névoa sendo desenhada agora
     var selectedShape = null;  // id da forma de névoa selecionada (mestre)
+    var selectedArea = null;   // id da área de efeito escolhida para ajustar
+    var handling = null;       // alça sendo arrastada (mover, girar, esticar)
     var preview = false;       // "prévia do jogador": ver a névoa fechada
     var selectedMarker = null; // id do marcador selecionado (mestre)
     var scroller = panel.querySelector("[data-board-scroll]");
@@ -233,7 +236,7 @@
     }
 
     function fogShapes() {
-      var shapes = ((state.fog_layer || {}).shapes || []).slice();
+      var shapes = ((state.fog_layer || {}).shapes || []).map(beingMoved);
       if (drawing) {
         // Polígono em andamento: a próxima quina acompanha o mouse.
         shapes.push(drawing.live && drawing.kind === "poly"
@@ -371,6 +374,224 @@
 
     /* Rabiscos da mesa. Ficam abaixo da névoa: o pedaço que cair no escuro
        some junto com o resto do mapa. */
+    /* --------------------------------------------------- ajustar o que já existe
+       Área ou forma de névoa escolhida ganha alças no mapa: arrastar para
+       mover, girar e esticar. Enquanto a alça está sendo arrastada, o mapa
+       mostra a prévia no lugar do que está salvo. */
+    function findArea(id) {
+      return (state.areas || []).filter(function (a) { return a.id === id; })[0];
+    }
+
+    function canChange(obj) {
+      return state.is_master || obj.owner === state.user_id;
+    }
+
+    function pickedNow() {
+      var shape = selectedShape && findShape(selectedShape);
+      if (shape) return { kind: "fog", obj: shape };
+      var area = selectedArea && findArea(selectedArea);
+      if (area) return { kind: "area", obj: area };
+      return null;
+    }
+
+    /* Enquanto a alça é arrastada, o mapa mostra a prévia no lugar do salvo. */
+    function beingMoved(obj) {
+      return handling && handling.id === obj.id ? handling.now : obj;
+    }
+
+    function round3(points) {
+      return points.map(function (p) {
+        return [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000];
+      });
+    }
+
+    /* Quinas de verdade: o retângulo guarda só dois pontos, mas gira com quatro. */
+    function shapeCorners(shape) {
+      if (shape.kind !== "rect") return shape.points.map(function (p) { return [p[0], p[1]]; });
+      var a = shape.points[0], b = shape.points[1];
+      return [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]];
+    }
+
+    function shapeBox(shape) {
+      if (shape.kind === "circle") {
+        var c = shape.points[0], r = shape.size;
+        return { x0: c[0] - r, y0: c[1] - r, x1: c[0] + r, y1: c[1] + r };
+      }
+      var pad = shape.kind === "brush" ? shape.size : 0;   // o traço tem grossura
+      var xs = shape.points.map(function (p) { return p[0]; });
+      var ys = shape.points.map(function (p) { return p[1]; });
+      return { x0: Math.min.apply(null, xs) - pad, y0: Math.min.apply(null, ys) - pad,
+               x1: Math.max.apply(null, xs) + pad, y1: Math.max.apply(null, ys) + pad };
+    }
+
+    function movePoint(point, t) {
+      var x = point[0], y = point[1];
+      if (t.mode === "move") return [x + t.dx, y + t.dy];
+      if (t.mode === "scale") return [t.ax + (x - t.ax) * t.sx, t.ay + (y - t.ay) * t.sy];
+      var rad = t.turn * Math.PI / 180, dx = x - t.cx, dy = y - t.cy;
+      return [t.cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+              t.cy + dx * Math.sin(rad) + dy * Math.cos(rad)];
+    }
+
+    function shapeWith(shape, t) {
+      var kind = shape.kind, points;
+      if (kind === "rect" && t.mode === "rotate") {
+        kind = "poly";                       // retângulo girado vira polígono
+        points = shapeCorners(shape).map(function (p) { return movePoint(p, t); });
+      } else {
+        points = shape.points.map(function (p) { return movePoint(p, t); });
+      }
+      var size = shape.size;
+      if (t.mode === "scale" && (kind === "circle" || kind === "brush")) {
+        size = Math.max(0.05, size * (t.sx + t.sy) / 2);
+      }
+      if (kind === "rect") {                 // volta a ser [canto menor, canto maior]
+        var a = points[0], b = points[1];
+        points = [[Math.min(a[0], b[0]), Math.min(a[1], b[1])],
+                  [Math.max(a[0], b[0]), Math.max(a[1], b[1])]];
+      }
+      return { id: shape.id, kind: kind, cut: shape.cut, points: round3(points),
+               size: Math.round(Math.min(state.brush || 12, size) * 1000) / 1000 };
+    }
+
+    function renderHandles() {
+      if (!handleLayer) return;
+      handleLayer.innerHTML = "";
+      handleLayer.setAttribute("viewBox", "0 0 " + state.cols + " " + state.rows);
+      handleLayer.setAttribute("width", state.cols * cell);
+      handleLayer.setAttribute("height", state.rows * cell);
+      var pick = pickedNow();
+      if (!pick || readonly || !canChange(pick.obj)) return;
+
+      var NS = "http://www.w3.org/2000/svg";
+      var size = 9 / cell;          // alça do mesmo tamanho em qualquer zoom
+      function knob(x, y, role, tip) {
+        var node = document.createElementNS(NS, "circle");
+        node.setAttribute("cx", x);
+        node.setAttribute("cy", y);
+        node.setAttribute("r", size);
+        node.setAttribute("class", "handle handle-" + role);
+        node.dataset.handle = role;
+        var title = document.createElementNS(NS, "title");
+        title.textContent = tip;
+        node.appendChild(title);
+        handleLayer.appendChild(node);
+      }
+      function guide(x0, y0, x1, y1) {
+        var node = document.createElementNS(NS, "line");
+        node.setAttribute("x1", x0); node.setAttribute("y1", y0);
+        node.setAttribute("x2", x1); node.setAttribute("y2", y1);
+        node.setAttribute("class", "handle-line");
+        handleLayer.appendChild(node);
+      }
+
+      if (pick.kind === "area") {
+        var area = beingMoved(pick.obj);
+        var rad = area.angle * Math.PI / 180;
+        var tipX = area.shape === "circle" ? area.ox + area.size : area.ox + Math.cos(rad) * area.size;
+        var tipY = area.shape === "circle" ? area.oy : area.oy + Math.sin(rad) * area.size;
+        guide(area.ox, area.oy, tipX, tipY);
+        knob(area.ox, area.oy, "area-move", "Arraste para mover a área");
+        knob(tipX, tipY, "area-aim", area.shape === "circle"
+          ? "Arraste para mudar o raio" : "Arraste para girar e esticar");
+        return;
+      }
+
+      var box = shapeBox(beingMoved(pick.obj));
+      var frame = document.createElementNS(NS, "rect");
+      frame.setAttribute("x", box.x0); frame.setAttribute("y", box.y0);
+      frame.setAttribute("width", Math.max(0.01, box.x1 - box.x0));
+      frame.setAttribute("height", Math.max(0.01, box.y1 - box.y0));
+      frame.setAttribute("class", "handle-frame");
+      handleLayer.appendChild(frame);
+      var midX = (box.x0 + box.x1) / 2, up = box.y0 - size * 2.5;
+      guide(midX, box.y0, midX, up);
+      knob(midX, up, "rotate", "Arraste para girar (de 15 em 15; Ctrl solta)");
+      knob(midX, (box.y0 + box.y1) / 2, "move", "Arraste para mover a forma");
+      knob(box.x0, box.y0, "nw", "Arraste para esticar (Shift mantém a proporção)");
+      knob(box.x1, box.y0, "ne", "Arraste para esticar (Shift mantém a proporção)");
+      knob(box.x1, box.y1, "se", "Arraste para esticar (Shift mantém a proporção)");
+      knob(box.x0, box.y1, "sw", "Arraste para esticar (Shift mantém a proporção)");
+    }
+
+    function startHandle(role, pick, event) {
+      handling = { role: role, kind: pick.kind, id: pick.obj.id, pointer: event.pointerId,
+                   from: pointAt(event, false),
+                   origin: JSON.parse(JSON.stringify(pick.obj)), now: pick.obj };
+      capture(event);
+    }
+
+    function dragHandle(event) {
+      var point = pointAt(event, false);
+      var free = event.ctrlKey || event.metaKey;    // Ctrl solta da grade
+      var snap = function (value) { return free ? value : Math.round(value * 2) / 2; };
+      var start = handling.origin;
+
+      if (handling.kind === "area") {
+        var area = JSON.parse(JSON.stringify(start));
+        if (handling.role === "area-move") {
+          area.ox = Math.max(0, Math.min(state.cols, snap(start.ox + point.x - handling.from.x)));
+          area.oy = Math.max(0, Math.min(state.rows, snap(start.oy + point.y - handling.from.y)));
+        } else {
+          var ax = point.x - area.ox, ay = point.y - area.oy;
+          var reach = Math.sqrt(ax * ax + ay * ay);
+          area.size = Math.max(0.5, snap(reach));
+          if (area.shape !== "circle" && reach > 0.2) {
+            var deg = (Math.atan2(ay, ax) * 180 / Math.PI + 360) % 360;
+            area.angle = free ? deg : (Math.round(deg / 15) * 15) % 360;
+          }
+        }
+        handling.now = area;
+        render();
+        return;
+      }
+
+      var box = shapeBox(start);
+      if (handling.role === "move") {
+        handling.now = shapeWith(start, { mode: "move", dx: snap(point.x - handling.from.x),
+                                                        dy: snap(point.y - handling.from.y) });
+      } else if (handling.role === "rotate") {
+        var cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+        // A alça nasce acima da forma: o ângulo conta a partir dali.
+        var turn = Math.atan2(point.y - cy, point.x - cx) * 180 / Math.PI + 90;
+        handling.now = shapeWith(start, { mode: "rotate", cx: cx, cy: cy,
+                                          turn: free ? turn : Math.round(turn / 15) * 15 });
+      } else {
+        var west = handling.role.indexOf("w") >= 0, north = handling.role.indexOf("n") >= 0;
+        var hx = west ? box.x0 : box.x1, hy = north ? box.y0 : box.y1;
+        var anchorX = west ? box.x1 : box.x0, anchorY = north ? box.y1 : box.y0;
+        var sx = hx === anchorX ? 1 : (snap(point.x) - anchorX) / (hx - anchorX);
+        var sy = hy === anchorY ? 1 : (snap(point.y) - anchorY) / (hy - anchorY);
+        if (event.shiftKey) sx = sy = (sx + sy) / 2;
+        handling.now = shapeWith(start, { mode: "scale", ax: anchorX, ay: anchorY,
+                                          sx: Math.max(0.05, sx), sy: Math.max(0.05, sy) });
+      }
+      render();
+    }
+
+    function endHandle(cancelled) {
+      var done = handling;
+      handling = null;
+      if (cancelled || !done.now) { render(); return; }
+      if (done.kind === "area") {
+        var area = findArea(done.id);
+        if (area) {                       // otimista: a resposta confirma
+          area.ox = done.now.ox; area.oy = done.now.oy;
+          area.angle = done.now.angle; area.size = done.now.size;
+        }
+        send(urls.area, { op: "update", id: done.id, ox: done.now.ox, oy: done.now.oy,
+                          angle: done.now.angle, size: done.now.size });
+      } else {
+        var shapes = (state.fog_layer || {}).shapes || [];
+        for (var i = 0; i < shapes.length; i++) {
+          if (shapes[i].id === done.id) shapes[i] = done.now;
+        }
+        send(urls.fog, { op: "shape", id: done.id, kind: done.now.kind,
+                         points: done.now.points, size: done.now.size });
+      }
+      render();
+    }
+
     function renderDrawings() {
       if (!drawLayer) return;
       var NS = "http://www.w3.org/2000/svg";
@@ -433,11 +654,12 @@
       areaLayer.setAttribute("width", width);
       areaLayer.setAttribute("height", height);
       areaLayer.innerHTML = "";
-      var all = (state.areas || []).slice();
+      var all = (state.areas || []).map(beingMoved);
       if (aiming) all.push(aiming);
       all.forEach(function (area) {
         var node = areaShape(area);
         node.setAttribute("class", "area" + (area === aiming ? " is-aiming" : "") +
+                                   (area.id === selectedArea ? " is-picked" : "") +
                                    (area.owner === state.user_id ? " is-mine" : ""));
         areaLayer.appendChild(node);
       });
@@ -445,8 +667,17 @@
       if (!areaList) return;
       areaList.innerHTML = "";
       areaList.hidden = !(state.areas || []).length;
-      (state.areas || []).forEach(function (area) {
-        var row = el("div", "area-row");
+      (state.areas || []).map(beingMoved).forEach(function (area) {
+        var row = el("div", "area-row" + (area.id === selectedArea ? " is-selected" : ""));
+        if (canChange(area) && !readonly) {
+          row.title = "Clique para ajustar esta área no mapa";
+          row.addEventListener("click", function (event) {
+            if (event.target.closest("button")) return;
+            selectedShape = null;
+            selectedArea = selectedArea === area.id ? null : area.id;
+            render();
+          });
+        }
         var sizeText = state.cell_size ? formatNumber(area.size * state.cell_size) + " " + state.cell_unit
           : formatNumber(area.size) + " quadrados";
         var hit = areaCells(area).map(function (t) { return t.name; });
@@ -592,6 +823,7 @@
       renderMarkers();
       renderAreas();
       renderTokens();
+      renderHandles();
       renderSelected();
       syncFogTools();
       panel.querySelectorAll("[data-draw-tools]").forEach(function (box) {
@@ -692,6 +924,7 @@
       state.bench = state.bench || [];
       state.fog_layer = state.fog_layer || { fill: false, shapes: [] };
       if (selectedShape && !findShape(selectedShape)) selectedShape = null;
+      if (selectedArea && !findArea(selectedArea)) selectedArea = null;
       state.markers = state.markers || [];
       state.areas = state.areas || [];
       if (selected && !findToken(selected)) selected = null;
@@ -918,6 +1151,7 @@
     }
 
     function selectShape(id) {
+      if (id) selectedArea = null;
       selectedShape = id;
       syncFogTools();
       fogInfo();
@@ -948,6 +1182,13 @@
 
     boardEl.addEventListener("pointerdown", function (event) {
       if (!state || event.button > 0 || readonly) return;
+      var grip = event.target.closest("[data-handle]");
+      var pick = grip && pickedNow();
+      if (pick) {                       // alça de ajuste vem antes de tudo
+        event.preventDefault();
+        startHandle(grip.dataset.handle, pick, event);
+        return;
+      }
       var target = cellAt(event);
       var tokenEl = event.target.closest(".token");
 
@@ -1043,6 +1284,10 @@
     });
 
     boardEl.addEventListener("pointermove", function (event) {
+      if (handling && event.pointerId === handling.pointer) {
+        dragHandle(event);
+        return;
+      }
       if (aiming && event.pointerId === aiming.pointer) {
         if (aiming.shape !== "circle") {
           var p = pointAt(event, false);
@@ -1105,6 +1350,10 @@
     });
 
     function endPointer(event, cancelled) {
+      if (handling && event.pointerId === handling.pointer) {
+        endHandle(cancelled);
+        return;
+      }
       if (aiming && event.pointerId === aiming.pointer) {
         var area = aiming;
         aiming = null;
@@ -1267,6 +1516,23 @@
         return;
       }
       var step = ARROWS[event.key];
+      var picked = pickedNow();
+      if (step && picked && canChange(picked.obj) && !selected) {
+        // Setas empurram meio quadrado o que está escolhido para ajuste.
+        event.preventDefault();
+        handling = { role: "move", kind: picked.kind, id: picked.obj.id,
+                     origin: JSON.parse(JSON.stringify(picked.obj)), now: null };
+        if (picked.kind === "area") {
+          var nudged = JSON.parse(JSON.stringify(picked.obj));
+          nudged.ox = Math.max(0, Math.min(state.cols, nudged.ox + step[0] * 0.5));
+          nudged.oy = Math.max(0, Math.min(state.rows, nudged.oy + step[1] * 0.5));
+          handling.now = nudged;
+        } else {
+          handling.now = shapeWith(picked.obj, { mode: "move", dx: step[0] * 0.5, dy: step[1] * 0.5 });
+        }
+        endHandle(false);
+        return;
+      }
       var token = selected && findToken(selected);
       if (!step || !token || token.x === undefined || !token.can_move) return;
       event.preventDefault();  // não rola a página
@@ -1290,11 +1556,12 @@
         finishPoly(false);
         return;
       }
-      if (selectedShape && (event.key === "Delete" || event.key === "Backspace")) {
+      var doomed = pickedNow();
+      if (doomed && canChange(doomed.obj) && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
-        var gone = selectedShape;
-        selectedShape = null;
-        send(urls.fog, { op: "remove", id: gone });
+        var url = doomed.kind === "fog" ? urls.fog : urls.area;
+        selectedShape = selectedArea = null;
+        send(url, { op: "remove", id: doomed.obj.id });
         return;
       }
       if (event.key === "Escape" && drawing) { finishPoly(true); return; }
@@ -1332,7 +1599,10 @@
     if (window.Live && window.Live.enabled && owner) {
       // Novidades do mapa chegam junto com o resto da página (uma requisição só).
       var liveHandle = window.Live.register("board", owner.dataset.encounterId + (view ? "." + view : ""), function (data) {
-        if (busy || drag || paint || drawing || pen || aiming) { liveHandle.reset(); return; }
+        if (busy || drag || paint || drawing || pen || aiming || handling) {
+          liveHandle.reset();
+          return;
+        }
         adopt(data);
       }, { fast: true });
       afterSend = function () { liveHandle.reset(); };

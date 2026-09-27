@@ -114,6 +114,14 @@ pode fazer **rolagens secretas**.
   Qualquer um da mesa desenha **áreas de efeito** — ◯ círculo (raio), ◭ cone e ━ linha — no
   tamanho em metros; o mapa mostra na hora **quem é atingido**. Tira a área quem a pôs (ou o
   mestre).
+
+  Nada fica travado depois de criado: **áreas e formas de névoa se ajustam pelas alças**.
+  Clique na área na lista embaixo do mapa (ou selecione a forma de névoa com ⬚) e elas
+  aparecem: a bolinha do meio **move**, as das quinas **esticam largura e altura** (Shift
+  mantém a proporção) e a de cima **gira** de 15 em 15 graus. Na área, a ponta gira e
+  estica de uma vez só. Tudo gruda na meia-casa da grade — segure **Ctrl** para soltar —,
+  as setas do teclado empurram meio quadrado e **Delete** apaga. Girar um retângulo de
+  névoa o transforma em polígono, então ele gira de verdade em vez de continuar deitado.
 - **Mapas**: galeria de imagens da campanha, que o mestre pode guardar e revelar depois.
 - **📣 Mostrar para a mesa**: o mestre clica numa imagem (Mapas) ou anotação e ela **abre na
   tela de todo mundo**, na hora, como um handout. Se era secreta, fica revelada.

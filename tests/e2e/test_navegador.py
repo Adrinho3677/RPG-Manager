@@ -218,6 +218,86 @@ def risco(page, surface, cell, pontos):
     page.mouse.up()
 
 
+def test_ajustar_forma_e_area_pelas_alcas(table):
+    """Depois de criadas, forma de névoa e área se movem, esticam e giram."""
+    mestre, ana, camp = table
+    page, card = new_encounter(mestre, camp)
+    panel = card.locator("[data-board]")
+    encounter_id = card.get_attribute("data-encounter-id")
+    estado = lambda: page.evaluate(
+        "url => fetch(url).then(r => r.json())",
+        "/campanhas/%d/combate/%s/mapa" % (camp, encounter_id))
+
+    panel.locator(".board-config summary").click()
+    panel.locator("[data-board-config] [name=fog]").check()
+    expect(panel.locator("[data-board-mode=fog-rect]")).to_be_visible()
+    surface = panel.locator("[data-board-surface]")
+    surface.scroll_into_view_if_needed()
+    cell = surface.bounding_box()["width"] / estado()["cols"]
+
+    def arrasta(x0, y0, x1, y1):
+        surface.scroll_into_view_if_needed()   # focar um campo da barra rola a página
+        box = surface.bounding_box()
+        page.mouse.move(box["x"] + cell * x0, box["y"] + cell * y0)
+        page.mouse.down()
+        page.mouse.move(box["x"] + cell * x1, box["y"] + cell * y1, steps=6)
+        page.mouse.up()
+        page.wait_for_timeout(700)
+
+    def alca(role):
+        """Onde a alça está, em quadrados — lido do próprio SVG."""
+        return page.evaluate(
+            """role => {
+                 const c = document.querySelector('[data-board-handles] [data-handle=' +
+                                                  JSON.stringify(role) + ']');
+                 return c && [parseFloat(c.getAttribute('cx')), parseFloat(c.getAttribute('cy'))];
+               }""", role)
+
+    def forma():
+        return estado()["fog_layer"]["shapes"][0]
+
+    panel.locator("[data-board-mode=fog-rect]").click()
+    arrasta(3, 3, 8, 6)
+    assert forma()["points"] == [[3, 3], [8, 6]]
+
+    # Sem seleção não há alça nenhuma no mapa.
+    expect(panel.locator("[data-board-handles] .handle")).to_have_count(0)
+    panel.locator("[data-board-mode=fog-pick]").click()
+    surface.click(position={"x": cell * 5, "y": cell * 4})
+    expect(panel.locator("[data-board-handles] .handle")).to_have_count(6)
+
+    centro = alca("move")
+    arrasta(centro[0], centro[1], centro[0] + 4, centro[1] + 4)
+    assert forma()["points"] == [[7, 7], [12, 10]]
+
+    canto = alca("se")
+    arrasta(canto[0], canto[1], canto[0] + 3, canto[1] + 2)
+    assert forma()["points"] == [[7, 7], [15, 12]]     # largura e altura mudam juntas
+
+    girar, meio = alca("rotate"), alca("move")
+    arrasta(girar[0], girar[1], meio[0] + 4, meio[1])   # um quarto de volta
+    virada = forma()
+    assert virada["kind"] == "poly"                     # retângulo girado vira polígono
+    largura = max(p[0] for p in virada["points"]) - min(p[0] for p in virada["points"])
+    altura = max(p[1] for p in virada["points"]) - min(p[1] for p in virada["points"])
+    assert (round(largura), round(altura)) == (5, 8)    # era 8 × 5
+
+    # Área de efeito: a ponta gira e estica de uma vez.
+    panel.locator("[data-area-size]").fill("6")
+    panel.locator("[data-area-shape=cone]").click()
+    arrasta(4, 11, 7, 11)
+    area = estado()["areas"][0]
+    assert round(area["angle"]) == 0
+
+    panel.locator(".area-row").first.click()
+    expect(panel.locator("[data-board-handles] .handle")).to_have_count(2)
+    ponta = alca("area-aim")
+    arrasta(ponta[0], ponta[1], area["ox"], area["oy"] + 3)
+    virado = estado()["areas"][0]
+    assert virado["id"] == area["id"] and len(estado()["areas"]) == 1
+    assert round(virado["angle"]) == 90 and virado["size"] == 3
+
+
 def test_a_mesa_desenha_no_mapa(table):
     """Mestre rabisca o plano, a jogadora vê ao vivo, desenha o dela e apaga."""
     mestre, ana, camp = table
