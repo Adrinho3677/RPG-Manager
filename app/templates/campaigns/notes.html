@@ -11,10 +11,10 @@
 
   <form method="get" class="field-row" style="margin-bottom:1rem">
     <div class="field" style="margin:0">
-      <input type="text" name="q" value="{{ search }}" placeholder="Buscar por título, texto ou tag">
+      <input type="text" name="q" value="{{ search }}" aria-label="Buscar anotações" placeholder="Buscar por título, texto ou tag">
     </div>
     <div class="field" style="margin:0">
-      <select name="categoria" onchange="this.form.submit()">
+      <select name="categoria" aria-label="Filtrar por categoria" onchange="this.form.submit()">
         <option value="">Todas as categorias</option>
         {% for value, label in categories %}
           <option value="{{ value }}" {% if active_category == value %}selected{% endif %}>{{ label }}</option>

@@ -25,6 +25,10 @@ class Config:
     JSON_AS_ASCII = False
     MAX_CONTENT_LENGTH = 4 * 1024 * 1024
     IMPORT_MAX_BYTES = 40 * 1024 * 1024  # só a importação de campanha aceita arquivo maior
+    # Teto de imagens por campanha. O disco do PythonAnywhere gratuito é de
+    # 512 MB e o banco mora nele: se encher, o site inteiro para de gravar.
+    CAMPAIGN_MAX_BYTES = int(os.environ.get("CAMPAIGN_MAX_BYTES", str(120 * 1024 * 1024)))
+    CAMPAIGN_MAX_FILES = int(os.environ.get("CAMPAIGN_MAX_FILES", "200"))
 
     # Migrações rodam sozinhas ao iniciar o app, para não precisar abrir um
     # console depois de cada atualização. Desligue com AUTO_MIGRATE=0 se for

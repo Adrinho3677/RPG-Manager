@@ -5,7 +5,7 @@
   /* Mesmo número de app/version.py. Se o servidor responder outro, o Python em
      execução é mais antigo que os arquivos desta página (no PythonAnywhere,
      `git pull` sem Reload) — e coisas param de salvar em silêncio. */
-  var BUILD = "2026-09-27.3";
+  var BUILD = "2026-09-27.4";
   if (document.body.dataset.build && document.body.dataset.build !== BUILD) {
     var aviso = document.createElement("div");
     aviso.className = "build-warning";

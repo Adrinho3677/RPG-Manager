@@ -14,6 +14,7 @@
   var DRAG_PX = 6;
   var ZOOM_KEY = "grimorio-board-cell";
   var ZOOM_MIN = 20, ZOOM_MAX = 96;
+  var FIT_MIN = 6;          // tela da TV: cabe o mapa todo, mesmo no celular
 
   function el(tag, className, text) {
     var node = document.createElement(tag);
@@ -798,7 +799,9 @@
       var box = scroller.getBoundingClientRect();
       var available = Math.max(200, window.innerHeight - box.top - 12);
       var size = Math.floor(Math.min(scroller.clientWidth / state.cols, available / state.rows));
-      return Math.max(ZOOM_MIN, Math.min(160, size));
+      // Aqui ninguém arrasta ficha, então o quadrado pode ficar menor que o
+      // mínimo da tela normal: numa tela estreita o mapa inteiro ainda cabe.
+      return Math.max(FIT_MIN, Math.min(160, size));
     }
 
     function render() {

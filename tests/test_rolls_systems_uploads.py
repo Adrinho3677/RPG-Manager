@@ -176,6 +176,34 @@ def test_arquivo_disfarcado_de_imagem_e_recusado(mesa):
         assert Asset.query.count() == 0
 
 
+def test_campanha_tem_teto_de_imagens(mesa):
+    """O disco é compartilhado: uma mesa sozinha não pode enchê-lo e derrubar o
+    site (quando o disco acaba, o banco para de gravar)."""
+    camp, code = mesa.campaign("mestre")
+    mesa.join("ana", code)
+    mesa.app.config["CAMPAIGN_MAX_FILES"] = 2
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+
+    for quem in (mestre, ana):
+        enviada = quem.post("/campanhas/%d/mapas" % camp,
+                            data={"title": "mapa", "file": png_file()},
+                            content_type="multipart/form-data", follow_redirects=True)
+        assert "Imagem enviada".encode() in enviada.data
+
+    # O jogador também esbarra no teto, não só o mestre.
+    barrada = ana.post("/campanhas/%d/mapas" % camp, data={"title": "mais", "file": png_file()},
+                       content_type="multipart/form-data", follow_redirects=True)
+    assert "que é o limite".encode() in barrada.data
+    with mesa.app.app_context():
+        assert Asset.query.filter_by(campaign_id=camp).count() == 2
+
+    # Outra campanha continua com o espaço dela.
+    outra, _ = mesa.campaign("mestre", name="Outra mesa")
+    livre = mestre.post("/campanhas/%d/mapas" % outra, data={"title": "ok", "file": png_file()},
+                        content_type="multipart/form-data", follow_redirects=True)
+    assert "Imagem enviada".encode() in livre.data
+
+
 def test_mapa_escondido_nao_e_entregue_ao_jogador(mesa):
     camp, code = mesa.campaign("mestre")
     mesa.join("ana", code)

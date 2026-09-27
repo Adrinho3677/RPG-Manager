@@ -51,6 +51,8 @@ def save_upload(storage, kind, owner, campaign=None, title="", visibility="mesa"
     mimetype, extension = sniff_image(head)
     if mimetype is None:
         raise UploadError("Envie uma imagem PNG, JPG, GIF ou WEBP.")
+    if campaign is not None:
+        check_campaign_room(campaign)
 
     token = secrets.token_hex(16)
     filename = "%s.%s" % (token, extension)
@@ -72,6 +74,30 @@ def save_upload(storage, kind, owner, campaign=None, title="", visibility="mesa"
     )
     db.session.add(asset)
     return asset
+
+
+def campaign_usage(campaign):
+    """(arquivos, bytes) que esta campanha ocupa no disco."""
+    row = db.session.query(db.func.count(Asset.id), db.func.coalesce(db.func.sum(Asset.size), 0)) \
+        .filter(Asset.campaign_id == campaign.id).one()
+    return int(row[0] or 0), int(row[1] or 0)
+
+
+def check_campaign_room(campaign):
+    """O disco é compartilhado: uma campanha sozinha não pode enchê-lo.
+
+    Sem isto, qualquer pessoa da mesa podia subir imagem até acabar o espaço —
+    e, quando acaba, o banco de dados para de gravar e o site inteiro cai.
+    """
+    limite_bytes = current_app.config.get("CAMPAIGN_MAX_BYTES")
+    limite_arquivos = current_app.config.get("CAMPAIGN_MAX_FILES")
+    arquivos, bytes_usados = campaign_usage(campaign)
+    if limite_arquivos and arquivos >= limite_arquivos:
+        raise UploadError("Esta campanha já tem %d imagens, que é o limite. "
+                          "Apague alguma antes de enviar outra." % limite_arquivos)
+    if limite_bytes and bytes_usados >= limite_bytes:
+        raise UploadError("Esta campanha já usa %d MB de imagens, que é o limite. "
+                          "Apague alguma antes de enviar outra." % (limite_bytes // (1024 * 1024)))
 
 
 def remove_file(asset):

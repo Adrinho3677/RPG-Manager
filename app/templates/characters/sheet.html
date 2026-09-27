@@ -202,12 +202,15 @@
             <div class="bar-fill" data-fill style="width:{{ bar.percent }}%;background:{{ bar.color }}"></div>
           </div>
           <div class="bar-inputs">
-            <input type="number" name="bar__{{ bar.key }}__current" value="{{ bar.current }}" data-current>
+            <input type="number" name="bar__{{ bar.key }}__current" value="{{ bar.current }}" data-current
+                   aria-label="{{ bar.name }} agora">
             <span>/</span>
             <input type="number" name="bar__{{ bar.key }}__max" value="{{ bar.max }}" data-max min="0"
+                   aria-label="{{ bar.name }} máximo"
                    {% if bar.max_formula %}readonly class="auto-max" title="Calculado: {{ bar.max_formula }}"{% endif %}>
             <span class="muted small">temp</span>
-            <input type="number" name="bar__{{ bar.key }}__temp" value="{{ bar.temp }}" style="width:58px" data-temp>
+            <input type="number" name="bar__{{ bar.key }}__temp" value="{{ bar.temp }}" style="width:58px" data-temp
+                   aria-label="{{ bar.name }} temporário">
           </div>
           {% if can_edit %}
             <div class="bar-quick">
@@ -234,13 +237,13 @@
       <details style="margin-top:1rem">
         <summary class="muted small" style="cursor:pointer">+ Adicionar barra só nesta ficha</summary>
         <div class="field-row" style="margin-top:.6rem">
-          <div class="field"><label>Nome</label><input type="text" name="new_bar_name" placeholder="Ex.: Munição"></div>
-          <div class="field"><label>Sigla</label><input type="text" name="new_bar_abbr" maxlength="6" placeholder="MUN"></div>
-          <div class="field"><label>Máximo</label><input type="number" name="new_bar_max" value="10"></div>
+          <div class="field"><label>Nome</label><input type="text" name="new_bar_name" aria-label="Nome da barra nova" placeholder="Ex.: Munição"></div>
+          <div class="field"><label>Sigla</label><input type="text" name="new_bar_abbr" aria-label="Sigla da barra nova" maxlength="6" placeholder="MUN"></div>
+          <div class="field"><label>Máximo</label><input type="number" name="new_bar_max" aria-label="Máximo da barra nova" value="10"></div>
           <div class="field"><label>Máximo por fórmula</label>
-            <input type="text" name="new_bar_max_formula" placeholder="opcional, ex.: 2 + VIG"></div>
-          <div class="field"><label>Cor</label><input type="color" name="new_bar_color" value="#c0392b" style="padding:2px;height:38px"></div>
-          <div class="field"><label>Observação</label><input type="text" name="new_bar_formula" placeholder="texto livre"></div>
+            <input type="text" name="new_bar_max_formula" aria-label="Fórmula do máximo da barra nova" placeholder="opcional, ex.: 2 + VIG"></div>
+          <div class="field"><label>Cor</label><input type="color" name="new_bar_color" aria-label="Cor da barra nova" value="#c0392b" style="padding:2px;height:38px"></div>
+          <div class="field"><label>Observação</label><input type="text" name="new_bar_formula" aria-label="Observação da barra nova" placeholder="texto livre"></div>
           <div class="field" style="align-self:end">
             <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_bar" data-full-submit>Adicionar</button>
           </div>
@@ -276,6 +279,7 @@
           {% endif %}
           <div class="attr-name">{{ attribute.abbr or attribute.name }}</div>
           <input type="number" name="attr__{{ attribute.key }}" value="{{ attribute.value }}"
+                 aria-label="{{ attribute.name }}"
                  min="{{ attribute.min }}" max="{{ attribute.max }}"
                  data-attr="{{ attribute.key }}" data-display="{{ sheet.display }}">
           <div class="attr-mod" data-mod-for="{{ attribute.key }}">
@@ -292,11 +296,11 @@
       <details style="margin-top:1rem">
         <summary class="muted small" style="cursor:pointer">+ Adicionar atributo só nesta ficha</summary>
         <div class="field-row" style="margin-top:.6rem">
-          <div class="field"><label>Nome</label><input type="text" name="new_attr_name" placeholder="Ex.: Sorte"></div>
-          <div class="field"><label>Sigla</label><input type="text" name="new_attr_abbr" maxlength="6" placeholder="SOR"></div>
-          <div class="field"><label>Valor</label><input type="number" name="new_attr_value" value="1"></div>
-          <div class="field"><label>Mín</label><input type="number" name="new_attr_min" value="0"></div>
-          <div class="field"><label>Máx</label><input type="number" name="new_attr_max" value="5"></div>
+          <div class="field"><label>Nome</label><input type="text" name="new_attr_name" aria-label="Nome do atributo novo" placeholder="Ex.: Sorte"></div>
+          <div class="field"><label>Sigla</label><input type="text" name="new_attr_abbr" aria-label="Sigla do atributo novo" maxlength="6" placeholder="SOR"></div>
+          <div class="field"><label>Valor</label><input type="number" name="new_attr_value" aria-label="Valor do atributo novo" value="1"></div>
+          <div class="field"><label>Mín</label><input type="number" name="new_attr_min" aria-label="Mínimo do atributo novo" value="0"></div>
+          <div class="field"><label>Máx</label><input type="number" name="new_attr_max" aria-label="Máximo do atributo novo" value="5"></div>
           <div class="field" style="align-self:end">
             <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_attribute" data-full-submit>Adicionar</button>
           </div>
@@ -341,7 +345,8 @@
           </div>
           <div class="skill-controls">
             {% if sheet.skill_mode == 'training' %}
-              <select name="skill__{{ skill.key }}__train" data-train>
+              <select name="skill__{{ skill.key }}__train" data-train
+                      aria-label="{{ skill.name }}: treinamento">
                 {% for level in sheet.training_levels %}
                   <option value="{{ level.value }}" {% if skill.train == level.value %}selected{% endif %}>
                     {{ level.label }}{% if level.value %} +{{ level.value }}{% endif %}
@@ -349,17 +354,18 @@
                 {% endfor %}
               </select>
             {% elif sheet.skill_mode == 'proficiency' %}
-              <select name="skill__{{ skill.key }}__prof" data-prof>
+              <select name="skill__{{ skill.key }}__prof" data-prof
+                      aria-label="{{ skill.name }}: proficiência">
                 <option value="0" {% if skill.prof == 0 %}selected{% endif %}>—</option>
                 <option value="1" {% if skill.prof == 1 %}selected{% endif %}>Proficiente</option>
                 <option value="2" {% if skill.prof == 2 %}selected{% endif %}>Especialista</option>
               </select>
             {% else %}
               <input type="number" name="skill__{{ skill.key }}__value" value="{{ skill.value }}"
-                     data-value title="Valor da perícia">
+                     data-value aria-label="{{ skill.name }}: valor">
             {% endif %}
             <input type="number" name="skill__{{ skill.key }}__other" value="{{ skill.other }}"
-                   data-other title="Outros bônus">
+                   data-other aria-label="{{ skill.name }}: outros bônus">
             <span class="skill-total" data-total>
               {% if sheet.skill_mode == 'percent' %}{{ skill.total }}%
               {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice }}d+{{ skill.total }}
@@ -375,14 +381,14 @@
       <details style="margin-top:1rem">
         <summary class="muted small" style="cursor:pointer">+ Adicionar perícia só nesta ficha</summary>
         <div class="field-row" style="margin-top:.6rem">
-          <div class="field"><label>Nome</label><input type="text" name="new_skill_name" placeholder="Ex.: Gastronomia"></div>
+          <div class="field"><label>Nome</label><input type="text" name="new_skill_name" aria-label="Nome da perícia nova" placeholder="Ex.: Gastronomia"></div>
           <div class="field"><label>Atributo base</label>
-            <select name="new_skill_attr">
+            <select name="new_skill_attr" aria-label="Atributo da perícia nova">
               {% for attribute in sheet.attributes %}
                 <option value="{{ attribute.key }}">{{ attribute.name }}</option>
               {% endfor %}
             </select></div>
-          <div class="field"><label>Valor inicial</label><input type="number" name="new_skill_default" value="0"></div>
+          <div class="field"><label>Valor inicial</label><input type="number" name="new_skill_default" aria-label="Valor inicial da perícia nova" value="0"></div>
           <div class="field" style="align-self:end">
             <button class="btn btn-gold btn-block" type="submit" name="__action" value="add_skill" data-full-submit>Adicionar</button>
           </div>
@@ -534,9 +540,9 @@
         <summary class="muted small" style="cursor:pointer">+ Adicionar campo de identidade</summary>
         <div class="field-row" style="margin-top:.6rem">
           <div class="field"><label>Nome do campo</label>
-            <input type="text" name="new_meta_name" placeholder="Ex.: Fraqueza"></div>
+            <input type="text" name="new_meta_name" aria-label="Nome do campo novo" placeholder="Ex.: Fraqueza"></div>
           <div class="field"><label>Tipo</label>
-            <select name="new_meta_type">
+            <select name="new_meta_type" aria-label="Tipo do campo novo">
               <option value="text">Texto</option>
               <option value="number">Número</option>
               <option value="textarea">Texto longo</option>

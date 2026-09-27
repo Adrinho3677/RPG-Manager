@@ -144,7 +144,10 @@ textarea { resize: vertical; min-height: 110px; line-height: 1.55; }
 .check { display: flex; align-items: center; gap: .5rem; color: var(--text); font-weight: 500; }
 .check input { width: auto; }
 .hint { color: var(--muted); font-size: .8rem; margin-top: .25rem; }
-fieldset { border: 1px dashed var(--line); border-radius: var(--radius); padding: .9rem; margin: 0 0 1rem; }
+fieldset { border: 1px dashed var(--line); border-radius: var(--radius); padding: .9rem; margin: 0 0 1rem;
+  /* Sem isto o fieldset se recusa a encolher abaixo do conteúdo (ele usa
+     min-inline-size: min-content por padrão) e a ficha rola de lado no celular. */
+  min-width: 0; }
 legend { color: var(--accent-2); font-weight: 700; font-size: .85rem; padding: 0 .4rem; }
 
 /* ------------------------------ tabelas -------------------------------- */
@@ -863,6 +866,9 @@ body.tv-mode .page { max-width: none; padding: .6rem .8rem; }
 .tv-controls { display: flex; gap: .4rem; align-items: center; }
 .tv-controls select { width: auto; }
 .tv-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: .8rem; align-items: start; }
+/* Tela estreita (o mestre espiando pelo celular): a coluna de 320px
+   estourava a janela e a página rolava de lado. */
+@media (max-width: 760px) { .tv-body { grid-template-columns: minmax(0, 1fr); } }
 .tv-board { margin: 0; border: 0; padding: 0; }
 .tv-board .board-scroll { max-height: none; overflow: hidden; border: 0; background: transparent; }
 .tv-board .token { cursor: default; }

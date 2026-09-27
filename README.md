@@ -124,6 +124,8 @@ pode fazer **rolagens secretas**.
   a escolha na hora; clicar fora dela, **Esc** ou o ✕ da barra soltam. Girar um retângulo de
   névoa o transforma em polígono, então ele gira de verdade em vez de continuar deitado.
 - **Mapas**: galeria de imagens da campanha, que o mestre pode guardar e revelar depois.
+  Jogador também envia (sempre visível para a mesa); o mestre é quem esconde. Cada campanha
+  tem um teto de espaço (`CAMPAIGN_MAX_BYTES`) para uma mesa não encher o disco sozinha.
 - **📣 Mostrar para a mesa**: o mestre clica numa imagem (Mapas) ou anotação e ela **abre na
   tela de todo mundo**, na hora, como um handout. Se era secreta, fica revelada.
 - **⏳ Relógios de progresso** ("o ritual se completa em 6 segmentos"): o mestre enche os
@@ -441,6 +443,7 @@ O comando `flask backup` só funciona com SQLite; no MySQL use o backup da aba *
 | `AUTO_MIGRATE` | `1` | `0` se rodar vários processos web ao mesmo tempo. |
 | `UPLOAD_DIR` | `instance/uploads` | Onde ficam as imagens enviadas. |
 | `BACKUP_DIR` / `BACKUP_KEEP` | `instance/backups` / `14` | Pasta e quantidade de backups. |
+| `CAMPAIGN_MAX_BYTES` / `CAMPAIGN_MAX_FILES` | `120 MB` / `200` | Teto de imagens por campanha. O banco mora no mesmo disco: se ele encher, o site inteiro para de gravar. |
 | `MAIL_SERVER` / `MAIL_PORT` | — / `587` | Servidor de e-mail (587 = STARTTLS, 465 = SSL). Sem ele, a recuperação por e-mail fica desligada. |
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | — | Conta que envia (no Gmail, senha de app). |
 | `MAIL_FROM` | `MAIL_USERNAME` | Remetente mostrado. |

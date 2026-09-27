@@ -105,7 +105,8 @@
       <p class="muted small">Peça o código de convite ao mestre.</p>
       <form method="post" action="{{ url_for('campaigns.join') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="field">
-          <input type="text" name="invite_code" placeholder="A1B2C3" maxlength="12" required
+          <input type="text" name="invite_code" aria-label="Código de convite"
+                 placeholder="A1B2C3" maxlength="12" required
                  style="text-transform:uppercase;letter-spacing:.15em;text-align:center">
         </div>
         <button class="btn btn-gold btn-block" type="submit">Entrar na campanha</button>

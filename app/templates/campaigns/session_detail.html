@@ -19,7 +19,7 @@
       {% endfor %}
     </div>
     <div class="field" style="margin:.5rem 0">
-      <input type="text" name="comment" maxlength="200" placeholder="Recado opcional (ex.: chego 20h)"
+      <input type="text" name="comment" aria-label="Recado sobre a presença" maxlength="200" placeholder="Recado opcional (ex.: chego 20h)"
              value="{{ answer.comment if answer else '' }}">
     </div>
     <button class="btn btn-gold btn-sm btn-block" type="submit">Responder</button>
@@ -68,7 +68,7 @@
 
         <div class="card">
           <div class="card-head"><h2>Roteiro do mestre</h2><span class="tag tag-danger">só você vê</span></div>
-          <textarea name="plan" style="min-height:260px"
+          <textarea name="plan" aria-label="Roteiro do mestre" style="min-height:260px"
                     placeholder="# Gancho&#10;- O que puxa os jogadores para a cena&#10;&#10;# Cenas&#10;## Confronto&#10;Estatísticas, DTs, pistas...">{{ session.plan }}</textarea>
           <p class="hint">Aceita # títulos, - listas, **negrito** e *itálico*.</p>
         </div>
@@ -77,20 +77,20 @@
           <div class="card-head"><h2>Cenas planejadas</h2>
             <span class="tag">{{ session.progress }}% pronto</span></div>
           <p class="muted small">Uma cena por linha. Durante a sessão, marque o que já aconteceu.</p>
-          <textarea name="beats" style="min-height:130px"
+          <textarea name="beats" aria-label="Cenas planejadas, uma por linha" style="min-height:130px"
                     placeholder="Chegada à vila&#10;Interrogatório do padre&#10;Emboscada na estrada">{% for beat in session.beats %}{{ beat.text }}
 {% endfor %}</textarea>
         </div>
 
         <div class="card">
           <div class="card-head"><h2>Sinopse para a mesa</h2><span class="tag tag-ok">jogadores veem</span></div>
-          <textarea name="synopsis" style="min-height:110px"
+          <textarea name="synopsis" aria-label="Sinopse para a mesa" style="min-height:110px"
                     placeholder="O que os jogadores sabem antes de começar.">{{ session.synopsis }}</textarea>
         </div>
 
         <div class="card">
           <div class="card-head"><h2>Resumo pós-sessão</h2><span class="tag tag-ok">jogadores veem</span></div>
-          <textarea name="recap" style="min-height:140px"
+          <textarea name="recap" aria-label="Resumo pós-sessão" style="min-height:140px"
                     placeholder="O que aconteceu de fato, ganchos abertos, XP distribuído...">{{ session.recap }}</textarea>
         </div>
       </div>

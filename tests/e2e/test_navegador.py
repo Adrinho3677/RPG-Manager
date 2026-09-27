@@ -299,6 +299,65 @@ def test_ajustar_forma_e_area_pelas_alcas(table):
     assert round(virado["angle"]) == 90 and virado["size"] == 3
 
 
+SEM_ROTULO = """() => {
+  const faltando = [];
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    if (el.type === 'hidden' || el.disabled) return;
+    const id = el.getAttribute('id');
+    const rotulado = (id && document.querySelector('label[for="' + CSS.escape(id) + '"]')) ||
+                     el.closest('label') || el.getAttribute('aria-label') ||
+                     el.getAttribute('aria-labelledby') || el.getAttribute('title');
+    if (!rotulado) faltando.push(el.tagName.toLowerCase() + '[name=' + (el.name || '?') + ']');
+  });
+  return faltando;
+}"""
+
+ROLAGEM_LATERAL = """() => document.documentElement.scrollWidth - window.innerWidth"""
+
+
+def test_todo_campo_tem_rotulo_e_nada_rola_de_lado(table):
+    """Leitor de tela precisa saber o que é cada campo, e o celular não pode
+    rolar de lado. Regressão: a ficha inteira e a tela da TV falhavam nisso."""
+    mestre, ana, camp = table
+    ficha = ana.create_character("Kian", camp)
+    mestre.go("/campanhas/%d/combate" % camp)
+    page = mestre.page
+    page.fill("input[name=name]", "Emboscada")
+    page.click("text=Criar rastreador")
+
+    paginas = ["/painel", "/conta", "/campanhas/%d" % camp,
+               "/campanhas/%d/anotacoes" % camp, "/campanhas/%d/sessoes" % camp,
+               "/campanhas/%d/combate" % camp, "/campanhas/%d/tesouro" % camp,
+               "/campanhas/%d/calendario" % camp, "/campanhas/%d/tabelas" % camp,
+               "/campanhas/%d/linha-do-tempo" % camp, "/campanhas/%d/tv" % camp]
+    mudos = {}
+    for caminho in paginas:
+        mestre.go(caminho)
+        page.wait_for_timeout(200)
+        faltando = page.evaluate(SEM_ROTULO)
+        if faltando:
+            mudos[caminho] = faltando
+    # A ficha é a tela mais usada: dezenas de campos, todos precisam de nome.
+    ana.go("/fichas/%d" % ficha)
+    ana.page.wait_for_timeout(300)
+    faltando = ana.page.evaluate(SEM_ROTULO)
+    if faltando:
+        mudos["/fichas/%d" % ficha] = faltando
+    assert not mudos, "campos sem rótulo: %s" % mudos
+
+    # Celular: nenhuma página pode passar da largura da janela.
+    page.set_viewport_size({"width": 375, "height": 812})
+    largas = {}
+    for caminho in paginas + ["/fichas/%d" % ficha]:
+        mestre.go(caminho)
+        page.wait_for_timeout(250)
+        sobra = page.evaluate(ROLAGEM_LATERAL)
+        if sobra > 2:
+            largas[caminho] = sobra
+    page.set_viewport_size({"width": 1280, "height": 900})
+    assert not largas, "páginas que rolam de lado no celular: %s" % largas
+
+
 def test_trocar_e_soltar_a_forma_de_nevoa(table):
     """Regressão: escolher uma forma só mostrava as alças no refresh seguinte,
     e clicar fora não soltava — dava a impressão de mapa travado."""
