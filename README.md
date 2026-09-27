@@ -120,7 +120,8 @@ pode fazer **rolagens secretas**.
   aparecem: a bolinha do meio **move**, as das quinas **esticam largura e altura** (Shift
   mantém a proporção) e a de cima **gira** de 15 em 15 graus. Na área, a ponta gira e
   estica de uma vez só. Tudo gruda na meia-casa da grade — segure **Ctrl** para soltar —,
-  as setas do teclado empurram meio quadrado e **Delete** apaga. Girar um retângulo de
+  as setas do teclado empurram meio quadrado e **Delete** apaga. Clicar noutra forma troca
+  a escolha na hora; clicar fora dela, **Esc** ou o ✕ da barra soltam. Girar um retângulo de
   névoa o transforma em polígono, então ele gira de verdade em vez de continuar deitado.
 - **Mapas**: galeria de imagens da campanha, que o mestre pode guardar e revelar depois.
 - **📣 Mostrar para a mesa**: o mestre clica numa imagem (Mapas) ou anotação e ela **abre na

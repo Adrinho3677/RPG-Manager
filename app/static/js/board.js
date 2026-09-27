@@ -1115,14 +1115,15 @@
       "fog-circle": "Arraste do centro para fora: névoa redonda",
       "fog-poly": "Clique em cada quina; Enter (ou duplo clique) fecha a forma, Esc cancela",
       "fog-brush": "Arraste para pintar névoa à mão livre",
-      "fog-pick": "Clique numa forma de névoa para revelar, cobrir ou apagar"
+      "fog-pick": "Clique numa forma de névoa para ajustar, revelar, cobrir ou apagar"
     };
 
     function fogInfo() {
       if (mode === "fog-pick") {
         var shape = selectedShape && findShape(selectedShape);
         info.textContent = shape
-          ? "Forma selecionada: " + (shape.cut ? "revelada (cortada)" : "cobrindo o mapa")
+          ? "Forma escolhida (" + (shape.cut ? "revelada" : "cobrindo") +
+            "): arraste as alças; Esc ou clique fora solta"
           : FOG_HINT["fog-pick"];
         return;
       }
@@ -1151,11 +1152,11 @@
     }
 
     function selectShape(id) {
-      if (id) selectedArea = null;
+      id = id || null;
+      if (selectedShape === id) return;   // nada mudou: nem redesenha
       selectedShape = id;
-      syncFogTools();
-      fogInfo();
-      drawFog();
+      if (id) selectedArea = null;
+      render();                           // as alças entram e saem na hora
     }
 
     function sendShape(shape) {
@@ -1233,8 +1234,9 @@
         event.preventDefault();
         var kind = mode.slice(4);
         if (kind === "pick") {
+          // Clicar numa forma escolhe aquela forma; clicar no vazio solta.
           var hit = shapeAt(fogPoint(event, true));
-          selectShape(hit && hit.id !== selectedShape ? hit.id : null);
+          selectShape(hit ? hit.id : null);
           return;
         }
         if (kind === "poly") {
@@ -1485,6 +1487,8 @@
         var shapeId = selectedShape;
         if (action === "fog-remove") selectedShape = null;
         send(urls.fog, { op: action.slice(4), id: shapeId });
+      } else if (action === "fog-drop") {
+        selectShape(null);
       } else if (action === "fog-preview") {
         preview = !preview;
         button.classList.toggle("active", preview);
@@ -1565,6 +1569,11 @@
         return;
       }
       if (event.key === "Escape" && drawing) { finishPoly(true); return; }
+      if (event.key === "Escape" && (selectedShape || selectedArea)) {
+        selectedShape = selectedArea = null;   // solta, mas continua na ferramenta
+        render();
+        return;
+      }
       if (event.key === "Escape" && mode !== "move") { aiming = null; setMode("move"); render(); return; }
       if (event.key === "Escape" && panel.classList.contains("board-full")) {
         panel.querySelector("[data-board-action=full]").click();

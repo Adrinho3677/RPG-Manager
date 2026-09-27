@@ -264,7 +264,8 @@ def test_ajustar_forma_e_area_pelas_alcas(table):
     expect(panel.locator("[data-board-handles] .handle")).to_have_count(0)
     panel.locator("[data-board-mode=fog-pick]").click()
     surface.click(position={"x": cell * 5, "y": cell * 4})
-    expect(panel.locator("[data-board-handles] .handle")).to_have_count(6)
+    page.wait_for_timeout(250)   # tem de ser no clique, não no refresh automático
+    assert panel.locator("[data-board-handles] .handle").count() == 6
 
     centro = alca("move")
     arrasta(centro[0], centro[1], centro[0] + 4, centro[1] + 4)
@@ -296,6 +297,75 @@ def test_ajustar_forma_e_area_pelas_alcas(table):
     virado = estado()["areas"][0]
     assert virado["id"] == area["id"] and len(estado()["areas"]) == 1
     assert round(virado["angle"]) == 90 and virado["size"] == 3
+
+
+def test_trocar_e_soltar_a_forma_de_nevoa(table):
+    """Regressão: escolher uma forma só mostrava as alças no refresh seguinte,
+    e clicar fora não soltava — dava a impressão de mapa travado."""
+    mestre, ana, camp = table
+    page, card = new_encounter(mestre, camp)
+    panel = card.locator("[data-board]")
+    panel.locator(".board-config summary").click()
+    panel.locator("[data-board-config] [name=fog]").check()
+    expect(panel.locator("[data-board-mode=fog-rect]")).to_be_visible()
+    surface = panel.locator("[data-board-surface]")
+    surface.scroll_into_view_if_needed()
+    encounter_id = card.get_attribute("data-encounter-id")
+    cols = page.evaluate("url => fetch(url).then(r => r.json()).then(s => s.cols)",
+                         "/campanhas/%d/combate/%s/mapa" % (camp, encounter_id))
+    cell = surface.bounding_box()["width"] / cols
+
+    def arrasta(x0, y0, x1, y1):
+        surface.scroll_into_view_if_needed()
+        box = surface.bounding_box()
+        page.mouse.move(box["x"] + cell * x0, box["y"] + cell * y0)
+        page.mouse.down()
+        page.mouse.move(box["x"] + cell * x1, box["y"] + cell * y1, steps=6)
+        page.mouse.up()
+        page.wait_for_timeout(600)
+
+    def alcas():
+        """Quantas alças estão na tela agora e onde fica a do meio."""
+        page.wait_for_timeout(250)
+        return page.evaluate("""() => {
+            const layer = document.querySelector('[data-board-handles]');
+            const meio = layer.querySelector('[data-handle="move"]');
+            return [layer.querySelectorAll('.handle').length,
+                    meio && [+meio.getAttribute('cx'), +meio.getAttribute('cy')]];
+        }""")
+
+    panel.locator("[data-board-mode=fog-rect]").click()
+    arrasta(2, 2, 6, 5)          # sala A, centro em 4 × 3,5
+    arrasta(10, 2, 15, 6)        # sala B, centro em 12,5 × 4
+
+    panel.locator("[data-board-mode=fog-pick]").click()
+    assert alcas() == [0, None]
+
+    def clica(x, y):
+        surface.scroll_into_view_if_needed()
+        box = surface.bounding_box()
+        page.mouse.click(box["x"] + cell * x, box["y"] + cell * y)
+
+    clica(4, 3)
+    assert alcas() == [6, [4, 3.5]]          # aparece no clique, não segundos depois
+    expect(panel.locator("[data-fog-shape-tools]")).to_be_visible()
+
+    clica(12, 4)
+    assert alcas() == [6, [12.5, 4]]         # troca direto para a outra sala
+
+    clica(18, 12)                            # clique no vazio solta
+    assert alcas() == [0, None]
+    expect(panel.locator("[data-fog-shape-tools]")).to_be_hidden()
+
+    clica(4, 3)
+    assert alcas()[0] == 6
+    page.keyboard.press("Escape")            # Esc solta e continua em "Selecionar"
+    assert alcas() == [0, None]
+    expect(panel.locator("[data-board-mode=fog-pick]")).to_have_class(re.compile("active"))
+
+    clica(12, 4)
+    panel.locator("[data-board-action=fog-drop]").click()   # e o ✕ da barra também
+    assert alcas() == [0, None]
 
 
 def test_a_mesa_desenha_no_mapa(table):
