@@ -208,6 +208,72 @@ def test_painel_de_rolagens_recolhido_nao_cobre_a_tela(table):
 
 
 
+def risco(page, surface, cell, pontos):
+    """Arrasta o mouse pelo mapa, em quadrados."""
+    box = surface.bounding_box()
+    page.mouse.move(box["x"] + cell * pontos[0][0], box["y"] + cell * pontos[0][1])
+    page.mouse.down()
+    for x, y in pontos[1:]:
+        page.mouse.move(box["x"] + cell * x, box["y"] + cell * y, steps=4)
+    page.mouse.up()
+
+
+def test_a_mesa_desenha_no_mapa(table):
+    """Mestre rabisca o plano, a jogadora vê ao vivo, desenha o dela e apaga."""
+    mestre, ana, camp = table
+    page, card = new_encounter(mestre, camp)
+    panel = card.locator("[data-board]")
+    encounter_id = card.get_attribute("data-encounter-id")
+    estado = lambda alvo: alvo.evaluate(
+        "url => fetch(url).then(r => r.json())",
+        "/campanhas/%d/combate/%s/mapa" % (camp, encounter_id))
+
+    surface = panel.locator("[data-board-surface]")
+    surface.scroll_into_view_if_needed()
+    cell = surface.bounding_box()["width"] / estado(page)["cols"]
+
+    panel.locator("[data-board-mode=draw]").click()
+    panel.locator("[data-draw-color]").evaluate(
+        "el => { el.value = '#ff5c5c'; el.dispatchEvent(new Event('change', { bubbles: true })); }")
+    risco(page, surface, cell, [(3, 3), (6, 4), (9, 3), (11, 6)])
+    page.wait_for_timeout(900)
+    feito = estado(page)["drawings"]
+    assert len(feito) == 1 and feito[0]["color"] == "#ff5c5c"
+    assert len(feito[0]["points"]) > 3 and feito[0]["who"] == mestre.name
+    expect(panel.locator("[data-board-draw] .drawing")).to_have_count(1)
+
+    # A jogadora recebe o desenho pela mesa ao vivo.
+    player = ana.go("/campanhas/%d/combate" % camp)
+    expect(player.locator("[data-board-draw] .drawing")).to_have_count(1, timeout=LIVE)
+
+    # E desenha o plano dela.
+    painel = player.locator("[data-board]").first
+    campo = painel.locator("[data-board-surface]")
+    campo.scroll_into_view_if_needed()
+    painel.locator("[data-board-mode=draw]").click()
+    risco(player, campo, cell, [(13, 8), (15, 10)])
+    expect(painel.locator("[data-board-draw] .drawing")).to_have_count(2, timeout=LIVE)
+    assert sorted(d["who"] for d in estado(player)["drawings"]) == sorted([mestre.name, ana.name])
+
+    # A borracha dela não encosta no desenho do mestre...
+    painel.locator("[data-board-mode=erase]").click()
+    caixa = campo.bounding_box()
+    player.mouse.click(caixa["x"] + cell * 6, caixa["y"] + cell * 4)
+    player.wait_for_timeout(700)
+    assert len(estado(player)["drawings"]) == 2
+
+    # ... mas apaga o dela.
+    player.mouse.click(caixa["x"] + cell * 14, caixa["y"] + cell * 9)
+    expect(painel.locator("[data-board-draw] .drawing")).to_have_count(1, timeout=LIVE)
+    assert [d["who"] for d in estado(player)["drawings"]] == [mestre.name]
+
+    # O mestre fecha o desenho: a ferramenta some para ela.
+    panel.locator(".board-config summary").click()
+    panel.locator("[data-board-config] [name=players_draw]").uncheck()
+    expect(painel.locator("[data-draw-tools]")).to_be_hidden(timeout=LIVE)
+    expect(panel.locator("[data-draw-tools]")).to_be_visible()
+
+
 def test_nevoa_pintada_com_o_mouse(table):
     """O pincel manda o traço ao servidor e o jogador só vê o que foi pintado."""
     mestre, ana, camp = table

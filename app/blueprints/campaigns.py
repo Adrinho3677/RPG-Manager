@@ -1350,6 +1350,26 @@ def board_area(campaign_id, encounter_id):
     return board_change(campaign, encounter, change)
 
 
+@bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/desenho", methods=["POST"])
+@login_required
+def board_draw(campaign_id, encounter_id):
+    """Rabisco no mapa: desenha quem o mestre deixar; apaga quem desenhou ou o mestre."""
+    campaign = get_campaign(campaign_id)
+    encounter = get_encounter(campaign, encounter_id)
+    payload = request.get_json(silent=True) or {}
+    is_master = campaign.is_master(current_user)
+    op = payload.get("op")
+    if op == "add":
+        change = lambda b: board_helper.add_drawing(b, payload, current_user, is_master)
+    elif op == "remove":
+        change = lambda b: board_helper.remove_drawing(b, str(payload.get("id")), current_user, is_master)
+    elif op == "clear":
+        change = lambda b: board_helper.clear_drawings(b, current_user, is_master)
+    else:
+        abort(400)
+    return board_change(campaign, encounter, change)
+
+
 @bp.route("/<int:campaign_id>/combate/<int:encounter_id>/mapa/marcador", methods=["POST"])
 @login_required
 def board_marker(campaign_id, encounter_id):

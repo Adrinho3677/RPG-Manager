@@ -20,10 +20,13 @@ O estado fica em Encounter.board (JSON):
                   na hora do jogo, revela cada uma com um clique (e cobre de
                   novo).
     players_move  jogadores podem mover as próprias fichas
+    players_draw  jogadores podem rabiscar no mapa
     tokens        {uid do combatente: {"x", "y", "hidden"}}
     areas         áreas de efeito [{id, shape (circle|cone|line), ox, oy, angle, size,
                   owner, who}] — origem e tamanho em quadrados
     markers       {id: {type, x, y, label, hidden}} — portas, armadilhas etc.
+    drawings      rabiscos à mão livre [{id, points, color, width, owner, who}] —
+                  o plano de ataque desenhado na mesa, em quadrados
     history       últimos movimentos [{uid, fx, fy, by}] — para desfazer
     version       sobe a cada mudança
 
@@ -53,9 +56,11 @@ DEFAULTS = {
     "revealed": [],
     "fog_layer": {"fill": False, "shapes": []},
     "players_move": True,
+    "players_draw": True,
     "tokens": {},
     "areas": [],
     "markers": {},
+    "drawings": [],
     "history": [],
     "version": 0,
 }
@@ -65,6 +70,11 @@ MAX_FOG_SHAPES = 300       # formas de névoa num mapa
 MAX_SHAPE_POINTS = 400     # pontos de uma forma (polígono ou traço de pincel)
 MAX_TOTAL_POINTS = 12000   # soma de todos: o JSON do mapa não pode crescer sem fim
 MAX_BRUSH = 12             # raio do pincel, em quadrados
+MAX_DRAWINGS = 80          # rabiscos guardados num mapa
+MAX_DRAW_POINTS = 300      # pontos de um rabisco
+MAX_DRAW_TOTAL = 8000      # soma de todos, pelo mesmo motivo da névoa
+MIN_PEN, MAX_PEN = 0.02, 0.6   # espessura do traço, em quadrados
+DEFAULT_PEN_COLOR = "#e9c46a"
 MAX_HISTORY = 30
 MAX_AREAS = 30
 MAX_MARKERS = 80
@@ -115,6 +125,7 @@ def normalize(raw):
                              else DEFAULTS["cell_unit"]).strip()[:8]
     board["fog"] = bool(raw.get("fog"))
     board["players_move"] = bool(raw.get("players_move", True))
+    board["players_draw"] = bool(raw.get("players_draw", True))
     board["version"] = max(0, to_int(raw.get("version"), 0))
 
     revealed = set()
@@ -178,6 +189,25 @@ def normalize(raw):
             "hidden": bool(marker.get("hidden", True)),
         }
     board["markers"] = markers
+
+    drawings, total = [], 0
+    for item in (raw.get("drawings") or [])[:MAX_DRAWINGS]:
+        if not isinstance(item, dict):
+            continue
+        points = _points(item.get("points"), MAX_DRAW_POINTS)
+        if not points or total + len(points) > MAX_DRAW_TOTAL:
+            continue
+        total += len(points)
+        drawings.append({
+            "id": str(item.get("id") or "")[:16] or secrets.token_hex(4),
+            "points": [[_clamp(px, 0, board["cols"]), _clamp(py, 0, board["rows"])]
+                       for px, py in points],
+            "color": _clean_color(item.get("color")),
+            "width": round(_clamp(to_float(item.get("width"), 0.12), MIN_PEN, MAX_PEN), 3),
+            "owner": to_int(item.get("owner"), 0),
+            "who": str(item.get("who") or "")[:64],
+        })
+    board["drawings"] = drawings
     return board
 
 
@@ -203,7 +233,7 @@ def configure(board, payload, map_ids):
         board["cell_size"] = size
     if "cell_unit" in payload:
         board["cell_unit"] = str(payload.get("cell_unit") or "").strip()[:8]
-    for key in ("grid", "fog", "players_move"):
+    for key in ("grid", "fog", "players_move", "players_draw"):
         if key in payload:
             board[key] = bool(payload.get(key))
     # Ligar a névoa num mapa ainda sem forma nenhuma cobre tudo: o mestre depois
@@ -532,6 +562,53 @@ def clear_areas(board):
     return board
 
 
+# ------------------------------------------------------------------- desenho
+def _clean_color(value):
+    """Só #rrggbb: a cor vai direto para o SVG, então nada de texto solto."""
+    raw = str(value or "").strip().lower()
+    if len(raw) == 7 and raw[0] == "#" and all(c in "0123456789abcdef" for c in raw[1:]):
+        return raw
+    return DEFAULT_PEN_COLOR
+
+
+def add_drawing(board, payload, user, is_master):
+    """Rabisco à mão livre. Qualquer um da mesa desenha, se o mestre deixar."""
+    if not is_master and not board["players_draw"]:
+        raise BoardError("O mestre fechou o desenho no mapa desta mesa.")
+    if len(board["drawings"]) >= MAX_DRAWINGS:
+        raise BoardError("Rabiscos demais neste mapa: apague alguns.")
+    points = _points(payload.get("points"), MAX_DRAW_POINTS)
+    if not points:
+        raise BoardError("Desenho vazio.")
+    if sum(len(d["points"]) for d in board["drawings"]) + len(points) > MAX_DRAW_TOTAL:
+        raise BoardError("O desenho deste mapa está grande demais: apague alguns rabiscos.")
+    board["drawings"].append({
+        "id": secrets.token_hex(4),
+        "points": [[_clamp(px, 0, board["cols"]), _clamp(py, 0, board["rows"])] for px, py in points],
+        "color": _clean_color(payload.get("color")),
+        "width": round(_clamp(to_float(payload.get("width"), 0.12), MIN_PEN, MAX_PEN), 3),
+        "owner": user.id, "who": user.username,
+    })
+    return board
+
+
+def remove_drawing(board, drawing_id, user, is_master):
+    drawing = next((d for d in board["drawings"] if d["id"] == drawing_id), None)
+    if drawing is None:
+        raise BoardError("Esse desenho já saiu do mapa.")
+    if not is_master and drawing["owner"] != user.id:
+        raise BoardError("Só quem desenhou (ou o mestre) pode apagar.")
+    board["drawings"].remove(drawing)
+    return board
+
+
+def clear_drawings(board, user, is_master):
+    """Mestre limpa o mapa todo; jogador apaga só os rabiscos dele."""
+    board["drawings"] = [] if is_master else [
+        d for d in board["drawings"] if d["owner"] != user.id]
+    return board
+
+
 def change_marker(board, payload):
     """Mestre: põe, move, revela/esconde, renomeia ou tira um marcador."""
     op = payload.get("op")
@@ -676,6 +753,15 @@ def view(encounter, state, user, is_master, maps):
             item.pop("hidden", None)
         markers.append(item)
 
+    drawings = []
+    for item in board["drawings"]:
+        # Rabisco inteiramente no escuro não chega ao jogador — mesma regra das
+        # fichas. O pedaço que cai na névoa fica escondido pela névoa na tela.
+        if not is_master and board["fog"] and not any(
+                is_revealed(board, px, py) for px, py in item["points"]):
+            continue
+        drawings.append(dict(item, mine=item["owner"] == getattr(user, "id", 0)))
+
     asset = maps.get(board["map_id"])
     map_url = asset.url if asset else None
     if asset and board["fog"] and not is_master:
@@ -696,12 +782,14 @@ def view(encounter, state, user, is_master, maps):
         "cell_unit": board["cell_unit"],
         "fog": board["fog"],
         "players_move": board["players_move"],
+        "players_draw": board["players_draw"],
         "revealed": [],
         "fog_layer": board["fog_layer"] if board["fog"] else {"fill": False, "shapes": []},
         "brush": MAX_BRUSH,
         "tokens": tokens,
         "bench": bench,
         "markers": markers,
+        "drawings": drawings,
         "areas": board["areas"],
         "marker_types": MARKER_TYPES,
         "user_id": getattr(user, "id", None),

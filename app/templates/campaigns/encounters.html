@@ -97,6 +97,7 @@
              data-state-url="{{ url_for('campaigns.board_state', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-move-url="{{ url_for('campaigns.board_move', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-area-url="{{ url_for('campaigns.board_area', campaign_id=campaign.id, encounter_id=encounter.id) }}"
+             data-draw-url="{{ url_for('campaigns.board_draw', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              data-undo-url="{{ url_for('campaigns.board_undo', campaign_id=campaign.id, encounter_id=encounter.id) }}"
              {% if is_master %}
              data-config-url="{{ url_for('campaigns.board_configure', campaign_id=campaign.id, encounter_id=encounter.id) }}"
@@ -120,6 +121,18 @@
             <button class="btn btn-ghost btn-sm" type="button" data-area-shape="line" title="Linha (comprimento, 1 quadrado de largura)">━</button>
             <input type="text" inputmode="decimal" value="6" data-area-size aria-label="Tamanho da área" class="board-size">
             <span class="muted small" data-area-unit></span>
+          </span>
+          <span class="board-tool-group board-draw-tools" data-draw-tools hidden>
+            <button class="btn btn-ghost btn-sm" type="button" data-board-mode="draw"
+                    title="Desenhar no mapa à mão livre — todos da mesa veem">✏️</button>
+            <input type="color" value="#e9c46a" data-draw-color class="draw-color"
+                   aria-label="Cor do desenho" title="Cor do desenho">
+            <input type="range" min="1" max="8" step="1" value="3" data-draw-width
+                   class="draw-width" aria-label="Espessura do traço" title="Espessura do traço">
+            <button class="btn btn-ghost btn-sm" type="button" data-board-mode="erase"
+                    title="Apagar: passe por cima do rabisco">🧽</button>
+            <button class="btn btn-ghost btn-sm" type="button" data-board-action="draw-clear"
+                    title="{% if is_master %}Apaga todos os desenhos do mapa{% else %}Apaga os seus desenhos{% endif %}">Limpar desenhos</button>
           </span>
           {% if is_master %}
             {# Névoa por formas: desenhe uma por sala antes da sessão e, no jogo,
@@ -209,7 +222,8 @@
             <div class="field board-checks">
               <label class="check"><input type="checkbox" name="grid"> Mostrar grade</label>
               <label class="check"><input type="checkbox" name="fog"> Névoa de guerra</label>
-              <label class="check"><input type="checkbox" name="players_move"> Jogadores movem as próprias fichas</label>
+              <label class="check"><input type="checkbox" name="players_draw"> Jogadores podem desenhar</label>
+            <label class="check"><input type="checkbox" name="players_move"> Jogadores movem as próprias fichas</label>
             </div>
           </div>
         </details>
@@ -223,6 +237,7 @@
           <img class="board-image" data-board-image alt="" hidden draggable="false">
           <div class="board-grid"></div>
           <canvas class="board-reach" data-board-reach></canvas>
+          <svg class="board-draw" data-board-draw aria-hidden="true"></svg>
           <canvas class="board-fog" data-board-fog></canvas>
           <div class="board-markers" data-board-markers></div>
           <svg class="board-areas" data-board-areas aria-hidden="true"></svg>

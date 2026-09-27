@@ -85,11 +85,16 @@ pode fazer **rolagens secretas**.
 - **Mapa tático** em cada combate: a imagem do mapa com grade por cima e as fichas do
   rastreador como peças. Arraste (ou toque na ficha e depois no quadrado — melhor no celular);
   enquanto arrasta, mostra a distância ("5 quadrados (7,5 m)"). Todos veem os movimentos ao
-  vivo. O mestre:
+  vivo. Qualquer um da mesa **rabisca no mapa** com o lápis ✏️ (cor e espessura à escolha, que
+  ficam guardadas no navegador): a rota do grupo, o plano de ataque, um X onde caiu a armadilha.
+  O rabisco aparece ao vivo para todo mundo e a borracha 🧽 apaga passando por cima — cada um
+  apaga o que desenhou, o mestre apaga o de qualquer um. Com névoa ligada, rabisco inteiramente
+  no escuro não chega ao jogador. O mestre:
   - ajusta a grade à imagem, a escala do quadrado e se jogadores movem as próprias fichas.
     A grade aceita **número quebrado** (18,5 × 14,35): o último quadrado de cada borda fica
     parcial, como no mapa de verdade, e "Ajustar à imagem" usa a proporção exata;
   - **esconde fichas** — some para os jogadores no mapa *e* na ordem de iniciativa;
+  - decide se os jogadores **movem as próprias fichas** e se **podem desenhar** no mapa;
   - **desenha a névoa de guerra por formas**, no estilo do Owlbear Rodeo: retângulo ▭,
     polígono ⬠ (clique em cada quina, Enter fecha), círculo ◯ e pincel 🖌 à mão livre — sala
     redonda, corredor torto e caverna sem virar escadinha de quadrados. As formas grudam na

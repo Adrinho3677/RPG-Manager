@@ -104,6 +104,7 @@
       fog: panel.dataset.fogUrl,
       area: panel.dataset.areaUrl,
       marker: panel.dataset.markerUrl,
+      draw: panel.dataset.drawUrl,
       undo: panel.dataset.undoUrl
     };
     var reachCanvas = panel.querySelector("[data-board-reach]");
@@ -111,6 +112,7 @@
     var view = panel.dataset.view || "";             // "mesa": visão dos jogadores
     var markerLayer = panel.querySelector("[data-board-markers]");
     var areaLayer = panel.querySelector("[data-board-areas]");
+    var drawLayer = panel.querySelector("[data-board-draw]");
     var areaList = panel.querySelector("[data-board-area-list]");
     var sizeInput = panel.querySelector("[data-area-size]");
     var areaShapeNow = null;   // forma escolhida na barra (modo "area")
@@ -133,10 +135,13 @@
     var state = null;
     var cell = readZoom();
     var selected = null;      // uid da ficha selecionada
-    // move | area | marker | fog-rect | fog-poly | fog-circle | fog-brush | fog-pick
+    // move | area | marker | draw | erase | fog-rect | fog-poly | fog-circle |
+    // fog-brush | fog-pick
     var mode = "move";
     var drag = null;          // arraste de ficha em andamento
     var paint = null;         // arraste de forma de névoa em andamento
+    var pen = null;           // lápis (ou borracha) em uso agora
+    var penStroke = null;     // rabisco sendo desenhado, antes de ir ao servidor
     var busy = 0;             // pedidos em andamento: não sobrescreve a tela
     var configTimer = null;
     var configDirty = false;   // há mudança digitada ainda não enviada
@@ -364,6 +369,41 @@
       });
     }
 
+    /* Rabiscos da mesa. Ficam abaixo da névoa: o pedaço que cair no escuro
+       some junto com o resto do mapa. */
+    function renderDrawings() {
+      if (!drawLayer) return;
+      var NS = "http://www.w3.org/2000/svg";
+      drawLayer.setAttribute("viewBox", "0 0 " + state.cols + " " + state.rows);
+      drawLayer.setAttribute("width", state.cols * cell);
+      drawLayer.setAttribute("height", state.rows * cell);
+      drawLayer.innerHTML = "";
+      (state.drawings || []).concat(penStroke ? [penStroke] : []).forEach(function (item) {
+        var node;
+        if (item.points.length > 1) {
+          node = document.createElementNS(NS, "polyline");
+          node.setAttribute("points", item.points.map(function (p) {
+            return p[0].toFixed(3) + "," + p[1].toFixed(3);
+          }).join(" "));
+          node.setAttribute("stroke-width", item.width);
+        } else {                      // um toque só: uma bolinha
+          node = document.createElementNS(NS, "circle");
+          node.setAttribute("cx", item.points[0][0]);
+          node.setAttribute("cy", item.points[0][1]);
+          node.setAttribute("r", item.width / 2);
+          node.setAttribute("fill", item.color);
+        }
+        node.setAttribute("class", "drawing");
+        node.setAttribute("stroke", item.color);
+        if (item.who) {
+          var title = document.createElementNS(NS, "title");
+          title.textContent = "Desenho de " + item.who;
+          node.appendChild(title);
+        }
+        drawLayer.appendChild(node);
+      });
+    }
+
     function renderMarkers() {
       markerLayer.innerHTML = "";
       (state.markers || []).forEach(function (marker) {
@@ -547,12 +587,19 @@
         image.removeAttribute("src");
       }
       drawReach();
+      renderDrawings();
       drawFog();
       renderMarkers();
       renderAreas();
       renderTokens();
       renderSelected();
       syncFogTools();
+      panel.querySelectorAll("[data-draw-tools]").forEach(function (box) {
+        box.hidden = !(state.is_master || state.players_draw);
+      });
+      if (!state.is_master && !state.players_draw && (mode === "draw" || mode === "erase")) {
+        setMode("move");
+      }
       if (!drag && !aiming && !drawing) {
         if (mode === "move") info.textContent = hint();
         else if (mode.indexOf("fog-") === 0) fogInfo();
@@ -605,6 +652,7 @@
       set("grid", state.grid);
       set("fog", state.fog);
       set("players_move", state.players_move);
+      set("players_draw", state.players_draw);
       panel.querySelectorAll("[data-fog-tools]").forEach(function (box) { box.hidden = !state.fog; });
       var warning = config.querySelector("[data-fog-warning]");
       var current = state.maps.filter(function (m) { return m.id === state.map_id; })[0];
@@ -738,6 +786,33 @@
       return Math.max(0.1, Math.min(state.brush || 12, value || 1.5));
     }
 
+    var PEN_KEY = "grimorio-pen";
+
+    function penStyle() {
+      var color = panel.querySelector("[data-draw-color]");
+      var width = panel.querySelector("[data-draw-width]");
+      var thick = width ? parseFloat(width.value) : 3;
+      return { color: color ? color.value : "#e9c46a",
+               width: Math.max(0.02, Math.min(0.6, (thick || 3) / 25)) };
+    }
+
+    function rememberPen() {
+      try { localStorage.setItem(PEN_KEY, JSON.stringify(penStyle())); } catch (e) {}
+    }
+
+    /* Qual rabisco está debaixo do dedo? Só os que esta pessoa pode apagar. */
+    function drawingAt(point) {
+      var list = state.drawings || [];
+      for (var i = list.length - 1; i >= 0; i--) {
+        if (!(state.is_master || list[i].mine)) continue;
+        var reach = Math.max(0.15, list[i].width / 2 + 0.1);
+        if (inShape({ kind: "brush", points: list[i].points, size: reach }, point.x, point.y)) {
+          return list[i];
+        }
+      }
+      return null;
+    }
+
     function cutNow() {
       var box = panel.querySelector("[data-fog-cut]");
       return !!(box && box.checked);
@@ -833,6 +908,15 @@
       if (fill) fill.classList.toggle("active", !!(state && (state.fog_layer || {}).fill));
     }
 
+    function eraseAt(point) {
+      var hit = drawingAt(point);
+      if (!hit || pen.gone[hit.id]) return;
+      pen.gone[hit.id] = true;                 // arrastar a borracha não repete o pedido
+      state.drawings = (state.drawings || []).filter(function (d) { return d.id !== hit.id; });
+      renderDrawings();
+      send(urls.draw, { op: "remove", id: hit.id });
+    }
+
     function selectShape(id) {
       selectedShape = id;
       syncFogTools();
@@ -877,6 +961,22 @@
         capture(event);
         renderAreas();
         aimInfo();
+        return;
+      }
+
+      if (mode === "draw" || mode === "erase") {
+        event.preventDefault();
+        var spot = pointAt(event, false);
+        pen = { pointer: event.pointerId, erasing: mode === "erase", gone: {} };
+        capture(event);
+        if (pen.erasing) {
+          eraseAt(spot);
+        } else {
+          var style = penStyle();
+          penStroke = { points: [[spot.x, spot.y]], color: style.color, width: style.width,
+                        mine: true, owner: state.user_id };
+          renderDrawings();
+        }
         return;
       }
 
@@ -958,6 +1058,18 @@
         aimInfo();
         return;
       }
+      if (pen && event.pointerId === pen.pointer) {
+        var here = pointAt(event, false);
+        if (pen.erasing) {
+          eraseAt(here);
+          return;
+        }
+        var tip = penStroke.points[penStroke.points.length - 1];
+        if (Math.abs(tip[0] - here.x) + Math.abs(tip[1] - here.y) < 0.05) return;
+        penStroke.points.push([Math.round(here.x * 1000) / 1000, Math.round(here.y * 1000) / 1000]);
+        renderDrawings();
+        return;
+      }
       if (paint && event.pointerId === paint.pointer) {
         var point = fogPoint(event, paint.kind === "brush");
         if (paint.kind === "rect") {
@@ -1003,6 +1115,20 @@
         } else {
           render();
         }
+        return;
+      }
+      if (pen && event.pointerId === pen.pointer) {
+        var stroke = penStroke;
+        pen = null;
+        penStroke = null;
+        if (!cancelled && stroke) {
+          rememberPen();
+          // Otimista: o rabisco já aparece enquanto o servidor confirma.
+          state.drawings = (state.drawings || []).concat([stroke]);
+          send(urls.draw, { op: "add", points: stroke.points,
+                            color: stroke.color, width: stroke.width });
+        }
+        renderDrawings();
         return;
       }
       if (paint && event.pointerId === paint.pointer) {
@@ -1064,6 +1190,8 @@
       if (mode === "area") info.textContent = "Clique no mapa" +
         (shape === "circle" ? " no centro da área" : " na origem e arraste para mirar");
       else if (mode === "marker") info.textContent = "Clique no quadrado do marcador";
+      else if (mode === "draw") info.textContent = "Arraste para desenhar no mapa — todos da mesa veem";
+      else if (mode === "erase") info.textContent = "Passe por cima do rabisco para apagar";
       else if (mode.indexOf("fog-") === 0) fogInfo();
       else if (state) info.textContent = hint();
     }
@@ -1093,6 +1221,10 @@
         var full = panel.classList.toggle("board-full");
         document.body.classList.toggle("board-lock", full);
         button.textContent = full ? "✕ Sair da tela cheia" : "⛶ Tela cheia";
+      } else if (action === "draw-clear") {
+        var all = state.is_master;
+        if (!confirm(all ? "Apagar todos os desenhos do mapa?" : "Apagar os seus desenhos?")) return;
+        send(urls.draw, { op: "clear" });
       } else if (action === "fog-fill") {
         send(urls.fog, { op: "fill", value: !(state.fog_layer || {}).fill });
       } else if (action === "fog-clear") {
@@ -1183,6 +1315,14 @@
         resizeTimer = setTimeout(render, 150);
       });
     }
+    try {   // a cor e a espessura do lápis seguem com a pessoa
+      var saved = JSON.parse(localStorage.getItem(PEN_KEY) || "null");
+      var colorInput = panel.querySelector("[data-draw-color]");
+      var widthInput = panel.querySelector("[data-draw-width]");
+      if (saved && colorInput) colorInput.value = saved.color;
+      if (saved && widthInput) widthInput.value = Math.round(saved.width * 25);
+    } catch (e) {}
+
     try {
       adopt(JSON.parse(panel.querySelector("[data-board-payload]").textContent));
     } catch (e) {
@@ -1192,7 +1332,7 @@
     if (window.Live && window.Live.enabled && owner) {
       // Novidades do mapa chegam junto com o resto da página (uma requisição só).
       var liveHandle = window.Live.register("board", owner.dataset.encounterId + (view ? "." + view : ""), function (data) {
-        if (busy || drag || paint || drawing || aiming) { liveHandle.reset(); return; }
+        if (busy || drag || paint || drawing || pen || aiming) { liveHandle.reset(); return; }
         adopt(data);
       }, { fast: true });
       afterSend = function () { liveHandle.reset(); };

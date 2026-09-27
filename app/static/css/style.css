@@ -625,7 +625,11 @@ a.user-chip:hover { text-decoration: none; border-color: var(--accent); }
 /* Camadas cobrem o mapa inteiro mas deixam o clique passar; só as peças o recebem. */
 .board-tokens, .board-markers { position: absolute; inset: 0; pointer-events: none; }
 .token, .marker { pointer-events: auto; }
-.board-areas { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.board-areas, .board-draw { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.board-draw .drawing { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.draw-color { width: 2rem; height: 1.7rem; padding: 0; border: 1px solid var(--line);
+  border-radius: 6px; background: none; cursor: pointer; }
+.draw-width { width: 70px; }
 .board-areas .area { fill: rgba(224, 86, 86, .22); stroke: #ff7b7b; stroke-width: .06; }
 .board-areas .area.is-mine { fill: rgba(163, 103, 240, .24); stroke: #c49bff; }
 .board-areas .area.is-aiming { fill: rgba(240, 169, 75, .3); stroke: var(--accent-2); stroke-dasharray: .2 .12; }

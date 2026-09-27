@@ -364,6 +364,108 @@ def test_nevoa_real_recorta_a_imagem_no_servidor(mesa, app):
     assert mesa.user("intruso").get(visto["map_url"]).status_code == 403
 
 
+# ------------------------------------------------------- desenho livre no mapa
+def rabisco(client, base, points, color="#ff0044", width=0.12):
+    return client.post(base + "/mapa/desenho",
+                       json={"op": "add", "points": points, "color": color, "width": width})
+
+
+def test_a_mesa_toda_desenha_no_mapa(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana, bia = mesa.user("mestre"), mesa.user("ana"), mesa.user("bia")
+
+    state = rabisco(ana, base, [[1, 1], [3, 2], [5, 2]]).get_json()
+    desenho = state["drawings"][0]
+    assert desenho["who"] == "ana" and desenho["mine"] is True
+    assert [tuple(p) for p in desenho["points"]] == [(1.0, 1.0), (3.0, 2.0), (5.0, 2.0)]
+
+    # Todo mundo vê o rabisco; "mine" diz de quem é para a borracha saber.
+    for cliente, meu in ((mestre, False), (bia, False), (ana, True)):
+        visto = cliente.get(base + "/mapa").get_json()["drawings"]
+        assert [(d["who"], d["mine"]) for d in visto] == [("ana", meu)]
+
+
+def test_apaga_o_proprio_rabisco_e_o_mestre_apaga_qualquer_um(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana, bia = mesa.user("mestre"), mesa.user("ana"), mesa.user("bia")
+    da_ana = rabisco(ana, base, [[1, 1], [2, 2]]).get_json()["drawings"][0]["id"]
+    da_bia = rabisco(bia, base, [[6, 6], [7, 7]]).get_json()["drawings"][1]["id"]
+
+    negado = ana.post(base + "/mapa/desenho", json={"op": "remove", "id": da_bia})
+    assert negado.status_code == 400 and "Só quem desenhou" in negado.get_json()["message"]
+
+    state = ana.post(base + "/mapa/desenho", json={"op": "remove", "id": da_ana}).get_json()
+    assert [d["who"] for d in state["drawings"]] == ["bia"]
+
+    state = mestre.post(base + "/mapa/desenho", json={"op": "remove", "id": da_bia}).get_json()
+    assert state["drawings"] == []
+
+
+def test_limpar_desenhos_respeita_quem_pediu(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana, bia = mesa.user("mestre"), mesa.user("ana"), mesa.user("bia")
+    rabisco(ana, base, [[1, 1], [2, 2]])
+    rabisco(bia, base, [[3, 3], [4, 4]])
+    rabisco(mestre, base, [[5, 5], [6, 6]])
+
+    # Jogadora limpa só o que é dela.
+    state = ana.post(base + "/mapa/desenho", json={"op": "clear"}).get_json()
+    assert sorted(d["who"] for d in state["drawings"]) == ["bia", "mestre"]
+
+    # O mestre limpa o mapa inteiro.
+    state = mestre.post(base + "/mapa/desenho", json={"op": "clear"}).get_json()
+    assert state["drawings"] == []
+
+
+def test_mestre_pode_fechar_o_desenho_dos_jogadores(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    assert mestre.get(base + "/mapa").get_json()["players_draw"] is True
+
+    mestre.post(base + "/mapa/configurar", json={"players_draw": False})
+    negado = rabisco(ana, base, [[1, 1], [2, 2]])
+    assert negado.status_code == 400 and "fechou o desenho" in negado.get_json()["message"]
+    assert rabisco(mestre, base, [[1, 1], [2, 2]]).status_code == 200
+
+
+def test_rabisco_no_escuro_nao_chega_ao_jogador(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    mestre, ana = mesa.user("mestre"), mesa.user("ana")
+    mestre.post(base + "/mapa/configurar", json={"fog": True})
+    forma(mestre, base, "rect", [[0, 0], [4, 4]])        # só esse canto está à vista
+
+    rabisco(mestre, base, [[12, 10], [14, 11]])          # plano secreto, no escuro
+    rabisco(mestre, base, [[1, 1], [2, 2]])              # à vista de todos
+    assert len(mestre.get(base + "/mapa").get_json()["drawings"]) == 2
+    visto = ana.get(base + "/mapa").get_json()["drawings"]
+    assert [tuple(p) for p in visto[0]["points"]] == [(1.0, 1.0), (2.0, 2.0)]
+    assert len(visto) == 1
+
+
+def test_desenho_nao_aceita_lixo(mesa):
+    camp, base, uids, _ = mesa_de_combate(mesa)
+    ana = mesa.user("ana")
+    # Cor vai direto para o SVG: só #rrggbb passa.
+    state = rabisco(ana, base, [[1, 1], [2, 2]], color="url(javascript:alert(1))").get_json()
+    assert state["drawings"][0]["color"] == "#e9c46a"
+
+    # Traço gordo demais e ponto fora do mapa entram na marra dos limites.
+    state = rabisco(ana, base, [[-5, 99], [2, 2]], width=50).get_json()
+    grosso = state["drawings"][1]
+    assert grosso["width"] == 0.6 and grosso["points"][0] == [0, 14.0]
+
+    vazio = ana.post(base + "/mapa/desenho", json={"op": "add", "points": []})
+    assert vazio.status_code == 400
+
+    for _ in range(90):   # teto de rabiscos por mapa
+        resposta = rabisco(ana, base, [[1, 1], [2, 2]])
+        if resposta.status_code == 400:
+            assert "demais" in resposta.get_json()["message"]
+            break
+    else:
+        raise AssertionError("o limite de rabiscos não foi aplicado")
+
+
 # ------------------------------------------ névoa por formas (Owlbear Rodeo)
 def forma(client, base, kind, points, cut=True, size=1.0):
     """Desenha uma forma de névoa. Cortada (cut) = abre buraco na névoa."""
