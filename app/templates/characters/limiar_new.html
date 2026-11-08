@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Novo personagem de Limiar · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="wizard">
+  <header class="wizard-head">
+    <div>
+      <h1>Novo personagem de Limiar</h1>
+      <p class="muted" style="margin:0">
+        {% if campaign %}Campanha <strong>{{ campaign.name }}</strong> · {% endif %}
+        Siga os passos do Livro do Jogador. A ficha confere as regras enquanto você escolhe.
+      </p>
+    </div>
+    <div class="field wizard-version">
+      <label for="wz-version">Regras</label>
+      <select id="wz-version" data-wz="version">
+        <option value="0.23">v0.23 (playtest)</option>
+        <option value="0.24">v0.24 (com afinidade)</option>
+      </select>
+    </div>
+  </header>
+
+  {% if problems %}
+    <div class="flash flash-error" style="margin-bottom:1rem">
+      <strong>Falta acertar:</strong>
+      <ul class="wz-list">{% for p in problems if p.level == 'erro' %}<li>{{ p.msg }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <div class="wizard-grid">
+    <div class="wizard-steps">
+
+      <section class="card wz-step" data-step="conceito">
+        <h2><span class="wz-num">1</span> Conceito e terra natal <span class="wz-status" data-status="conceito"></span></h2>
+        <div class="field-row">
+          <div class="field"><label for="wz-name">Nome</label>
+            <input type="text" id="wz-name" data-wz="name" maxlength="120" required></div>
+          <div class="field"><label for="wz-concept">Conceito</label>
+            <input type="text" id="wz-concept" data-wz="concept" maxlength="200"
+                   placeholder="Ex.: escavadora que parou de cavar para ler o que cavava"></div>
+        </div>
+        <div class="field"><label>Terra natal</label>
+          <div class="wz-options" data-options="terra"></div></div>
+        <div class="field"><label for="wz-contato">Um contato nessa terra</label>
+          <input type="text" id="wz-contato" data-wz="contato" maxlength="200"
+                 placeholder="Quem se lembra de você lá?"></div>
+        <ul class="wz-list wz-problems" data-problems="conceito"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="passado">
+        <h2><span class="wz-num">2</span> Passado <span class="wz-status" data-status="passado"></span></h2>
+        <p class="hint">Dá duas perícias treinadas e uma habilidade.</p>
+        <div class="wz-options wz-cards" data-options="passado"></div>
+        <ul class="wz-list wz-problems" data-problems="passado"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="arquetipo">
+        <h2><span class="wz-num">3</span> Arquétipo <span class="wz-status" data-status="arquetipo"></span></h2>
+        <div class="wz-options wz-cards" data-options="arquetipo"></div>
+        <ul class="wz-list wz-problems" data-problems="arquetipo"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="afinidade" data-only="0.24">
+        <h2><span class="wz-num">4</span> Afinidade <span class="wz-status" data-status="afinidade"></span></h2>
+        <p class="hint" data-afinidade-hint></p>
+        <div class="wz-options wz-cards" data-options="afinidades"></div>
+        <div class="field" data-principal-box hidden><label for="wz-principal">Escola principal (+2 nos testes dela)</label>
+          <select id="wz-principal" data-wz="principal"></select></div>
+        <ul class="wz-list wz-problems" data-problems="afinidade"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="atributos">
+        <h2><span class="wz-num" data-n>5</span> Atributos <span class="wz-status" data-status="atributos"></span></h2>
+        <p class="hint">Todos começam em 1. Distribua 4 pontos, no máximo 3 em cada. Reduzir um atributo
+          a 0 devolve 1 ponto. <strong data-attr-left></strong></p>
+        <div class="wz-attrs" data-attrs></div>
+        <ul class="wz-list wz-problems" data-problems="atributos"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="pericias">
+        <h2><span class="wz-num" data-n>6</span> Perícias <span class="wz-status" data-status="pericias"></span></h2>
+        <p class="hint">As do passado e do arquétipo já vêm treinadas. Escolha mais
+          <strong data-skill-picks>2 + Mente</strong>.</p>
+        <div class="wz-skills" data-skills></div>
+        <ul class="wz-list wz-problems" data-problems="pericias"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="vantagens">
+        <h2><span class="wz-num" data-n>7</span> Bênçãos e Marcas <span class="wz-status" data-status="vantagens"></span></h2>
+        <p class="hint">4 pontos para Bênçãos. Cada Marca devolve pontos, até +6, no máximo 3 Marcas e
+          10 pontos em Bênçãos. <strong data-budget></strong></p>
+        <div class="wz-two">
+          <div><h3>Bênçãos</h3><div class="wz-checks" data-checks="bencaos"></div></div>
+          <div><h3>Marcas</h3><div class="wz-checks" data-checks="marcas"></div></div>
+        </div>
+        <ul class="wz-list wz-problems" data-problems="vantagens"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="dons" hidden>
+        <h2><span class="wz-num" data-n>8</span> Dons menores <span class="wz-status" data-status="dons"></span></h2>
+        <p class="hint" data-dons-hint></p>
+        <div class="wz-checks" data-checks="dons"></div>
+        <ul class="wz-list wz-problems" data-problems="dons"></ul>
+      </section>
+
+      <section class="card wz-step" data-step="equipamento">
+        <h2><span class="wz-num" data-n>9</span> Equipamento <span class="wz-status" data-status="equipamento"></span></h2>
+        <p class="hint" data-kit-hint>Escolha o arquétipo para ver o kit.</p>
+        <div class="field-row">
+          <div class="field" data-weapon-box hidden><label for="wz-weapon">Arma do kit</label>
+            <select id="wz-weapon" data-wz="weapon"></select></div>
+          <div class="field" data-armor-box hidden><label for="wz-armor">Armadura do kit</label>
+            <select id="wz-armor" data-wz="armor"></select></div>
+          <div class="field" data-shield-box hidden><label for="wz-shield">Escudo</label>
+            <select id="wz-shield" data-wz="shield"></select></div>
+        </div>
+        <p class="hint">As dracmas (2d6 × 10) são roladas pelo servidor quando a ficha é criada,
+          e o resultado fica registrado na aba Evolução.</p>
+        <ul class="wz-list wz-problems" data-problems="equipamento"></ul>
+      </section>
+    </div>
+
+    <aside class="card wizard-summary">
+      <h2>Resumo</h2>
+      <dl class="wz-stats">
+        <div><dt>PV</dt><dd data-stat="pv">—</dd></div>
+        <div><dt>PI</dt><dd data-stat="pi">—</dd></div>
+        <div><dt>Defesa</dt><dd data-stat="defesa">—</dd></div>
+        <div><dt>Carga</dt><dd data-stat="carga">—</dd></div>
+      </dl>
+      <div data-summary-problems></div>
+      <form method="post" id="wz-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if campaign %}<input type="hidden" name="campaign_id" value="{{ campaign.id }}">
+        {% else %}<input type="hidden" name="system_id" value="{{ system.id }}">{% endif %}
+        <input type="hidden" name="choices" id="wz-choices">
+        <button class="btn btn-primary btn-block" type="submit" data-create disabled>Criar personagem</button>
+      </form>
+      <p class="hint" style="margin-top:.6rem">Prefere preencher tudo à mão?
+        <a href="{{ url_for('characters.create', campanha=campaign.id if campaign else None) }}">Ficha em branco</a>.</p>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="limiar-rules" type="application/json">{{ rules_json|safe }}</script>
+<script id="limiar-choices" type="application/json">{{ choices_json|safe }}</script>
+<script id="limiar-config" type="application/json">{{ {'check_url': url_for('characters.check_limiar')}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/limiar-wizard.js') }}"></script>
+{% endblock %}

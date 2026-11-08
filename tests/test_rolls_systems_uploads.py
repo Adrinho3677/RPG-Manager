@@ -91,10 +91,16 @@ def test_duplicar_e_salvar_preserva_carga_rotulos_e_descanso(mesa):
     assert saved["bars"][2]["rest_long"]["mode"] == "none"
 
 
+def own_system_id(mesa):
+    """Id do único sistema que não é preset (o id muda quando entra um preset novo)."""
+    with mesa.app.app_context():
+        return GameSystem.query.filter_by(is_preset=False).one().id
+
+
 def test_payload_vazio_ou_quebrado_nao_apaga_o_sistema(mesa):
     client = mesa.user("ana")
     client.post("/sistemas/%d/duplicar" % mesa.system_id("ordem-paranormal"))
-    sid = 7
+    sid = own_system_id(mesa)
     for bad in ("", "nao-e-json", "[]", "{}"):
         client.post("/sistemas/%d/editar" % sid, data={"name": "X", "payload": bad})
         assert len(mesa.get(GameSystem, sid).attributes) == 5
@@ -103,9 +109,10 @@ def test_payload_vazio_ou_quebrado_nao_apaga_o_sistema(mesa):
 def test_formula_invalida_gera_aviso(mesa):
     client = mesa.user("ana")
     client.post("/sistemas/%d/duplicar" % mesa.system_id("generico"))
-    data = mesa.get(GameSystem, 7).data
+    sid = own_system_id(mesa)
+    data = mesa.get(GameSystem, sid).data
     data["bars"][0]["max_formula"] = "10 + FORCA_INEXISTENTE"
-    page = client.post("/sistemas/7/editar", data={"name": "G", "payload": json.dumps(data)},
+    page = client.post("/sistemas/%d/editar" % sid, data={"name": "G", "payload": json.dumps(data)},
                        follow_redirects=True)
     assert "FORCA_INEXISTENTE".encode() in page.data
 
@@ -140,7 +147,7 @@ def test_importar_lixo_nao_quebra(mesa):
 
 def test_sistema_de_outro_usuario_nao_exporta(mesa):
     mesa.user("ana").post("/sistemas/%d/duplicar" % mesa.system_id("generico"))
-    assert mesa.user("bruno").get("/sistemas/7/exportar").status_code == 403
+    assert mesa.user("bruno").get("/sistemas/%d/exportar" % own_system_id(mesa)).status_code == 403
 
 
 # -------------------------------------------------------------------- imagens
@@ -273,4 +280,4 @@ def test_todas_as_paginas_abrem(mesa):
             status = mesa.user(who).get(path).status_code
             assert status == 200, "%s em %s deu %s" % (who, path, status)
     mestre.post("/sistemas/1/duplicar")
-    assert mestre.get("/sistemas/7/editar").status_code == 200
+    assert mestre.get("/sistemas/%d/editar" % own_system_id(mesa)).status_code == 200

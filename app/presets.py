@@ -474,6 +474,57 @@ GENERICO = {
 }
 
 
+# ---------------------------------------------------------------- Limiar
+# Regras de criação e conferência em app/limiar.py. Os campos pv_base, pv_nivel,
+# pi_base e pi_nivel vêm do arquétipo (o assistente de criação preenche);
+# pv_extra e pi_extra somam Aprimoramentos como Couro Grosso e Fôlego Longo.
+def _limiar():
+    from app import limiar
+    pv = _bar("pv", "Pontos de Vida", "PV", "#c0392b", 15, short="none", long="full",
+              max_formula="pv_base + COR * 5 + pv_nivel * (nivel / 2) + pv_extra")
+    pi = _bar("pi", "Ímpeto", "PI", "#d4a017", 4, short="none", long="full",
+              max_formula="pi_base + ALM + pi_nivel * (nivel / 2) + pi_extra")
+    dis = _bar("dissonancia", "Dissonância", "DIS", "#8e44ad", 20, short="none", long="none")
+    dis["start_empty"] = True
+    con = _bar("consciencia", "Consciência", "CON", "#16a085", 20, short="none", long="none")
+    con["start_empty"] = True
+    return {
+        "roll": {"type": "keep_highest_d20",
+                 "label": "Role d20 igual ao atributo, fique com o maior + perícia (atributo 0: 2d20, o menor)"},
+        "attribute_display": "number",
+        "skill_mode": "training",
+        "training_levels": limiar.TRAINING,
+        "attributes": [_attr(a["key"], a["name"], a["abbr"], 1, 0, 5) for a in limiar.ATTRIBUTES],
+        "bars": [pv, pi, dis, con],
+        "skills": [_skill(k, n, a) for k, n, a in limiar.SKILLS],
+        "meta_fields": [
+            _meta("regras", "Regras (v0.23 ou v0.24)"),
+            _meta("arquetipo", "Arquétipo"),
+            _meta("passado", "Passado"),
+            _meta("terra", "Terra natal"),
+            _meta("nivel", "Nível", "number"),
+            _meta("defesa", "Defesa", "number"),
+            _meta("armadura", "Bônus de armadura e escudo", "number"),
+            _meta("deslocamento", "Deslocamento"),
+            _meta("afinidades", "Afinidades"),
+            _meta("escola_principal", "Escola principal"),
+            _meta("pv_base", "PV base do arquétipo", "number"),
+            _meta("pv_nivel", "PV por nível par", "number"),
+            _meta("pi_base", "PI base do arquétipo", "number"),
+            _meta("pi_nivel", "PI por nível par", "number"),
+            _meta("pv_extra", "PV extra (Couro Grosso...)", "number"),
+            _meta("pi_extra", "PI extra (Fôlego Longo...)", "number"),
+        ],
+        "inventory": _inv("slots", "espaços", 8, "corpo", 1),
+        "currencies": [_coin("dr", "Dracmas", "dr")],
+        "labels": _labels("Ataques", "Dons e Rituais", "Grau", "Habilidades, Bênçãos e Marcas"),
+        "rules": limiar.SLUG,
+    }
+
+
+LIMIAR = _limiar()
+
+
 PRESETS = [
     {
         "name": "Ordem Paranormal",
@@ -517,6 +568,14 @@ PRESETS = [
                        "duas barras com máximo calculado por fórmula e seis perícias.",
         "data": GENERICO,
     },
+    {
+        "name": "Limiar",
+        "slug": "limiar",
+        "description": "Exploradores das ruínas da Ecúmena. Quatro atributos (Corpo, Mente, "
+                       "Alma, Poder) que dão d20 pegando o maior, perícias em graus de +5, PV, "
+                       "Ímpeto e Dissonância. Tem assistente de criação que confere as regras.",
+        "data": LIMIAR,
+    },
 ]
 
 # Iniciativa de cada sistema (ver app/initiative.py).
@@ -527,6 +586,7 @@ _INITIATIVE = {
     "chamado-de-cthulhu": {"source": "attribute", "key": "des", "roll": False},
     "vampiro-a-mascara": {"source": "formula", "formula": "DES + RAC", "roll": False},
     "generico": {"source": "attribute", "key": "corpo", "roll": True},
+    "limiar": {"source": "attribute", "key": "corpo", "roll": True},
 }
 for _preset in PRESETS:
     _preset["data"]["initiative"] = dict(_INITIATIVE[_preset["slug"]])

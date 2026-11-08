@@ -342,7 +342,8 @@ def build(character):
         elif skill_mode == "training":
             if roll_type == "keep_highest_d20":
                 total = train + other
-                dice = max(1, attr_value)
+                # Atributo 0 manda 0 dados: o servidor rola 2d20 e fica com o pior.
+                dice = max(0, attr_value)
             else:
                 total = attr_value + train + other
                 dice = 1
@@ -435,7 +436,9 @@ def blank_data(system):
         data["attributes"][attribute["key"]] = attribute.get("default", 0)
     for bar in system.bars:
         maximum = to_int(bar.get("default_max", 10), 10)
-        data["bars"][bar["key"]] = {"current": maximum, "max": maximum, "temp": 0}
+        # Barras que medem algo que cresce (Dissonância) começam vazias.
+        current = 0 if bar.get("start_empty") else maximum
+        data["bars"][bar["key"]] = {"current": current, "max": maximum, "temp": 0}
     for skill in system.skills:
         data["skills"][skill["key"]] = {
             "value": to_int(skill.get("default", 0)),
@@ -450,6 +453,7 @@ def blank_data(system):
     data, _ = apply_formulas(system, data)
     # numa ficha nova, a barra começa cheia mesmo quando o máximo vem da fórmula
     for bar in system.bars:
-        if (bar.get("max_formula") or "").strip() and bar["key"] in data["bars"]:
+        if ((bar.get("max_formula") or "").strip() and bar["key"] in data["bars"]
+                and not bar.get("start_empty")):
             data["bars"][bar["key"]]["current"] = data["bars"][bar["key"]]["max"]
     return data

@@ -127,6 +127,27 @@
   </details>
 {% endif %}
 
+{% if limiar_check is not none %}
+  {% set check_errors = limiar_check|selectattr('level', 'equalto', 'erro')|list %}
+  <details class="card rules-check" style="margin-bottom:1rem" {% if check_errors %}open{% endif %}>
+    <summary>
+      ✔ Conferir regras de Limiar
+      {% if check_errors %}<span class="tag tag-danger">{{ check_errors|length }} problema{{ 's' if check_errors|length > 1 }}</span>
+      {% elif limiar_check %}<span class="tag tag-gold">{{ limiar_check|length }} aviso{{ 's' if limiar_check|length > 1 }}</span>
+      {% else %}<span class="tag ok">tudo certo</span>{% endif %}
+    </summary>
+    {% if limiar_check %}
+      <ul>
+        {% for item in limiar_check %}<li class="wz-{{ item.level }}">{{ item.msg }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted small" style="margin:.6rem 0 0">Atributos, perícias, PV, PI, Defesa e afinidades batem com o nível {{ character.data.meta.nivel }}.</p>
+    {% endif %}
+    <p class="hint">A conferência roda ao abrir a ficha. Depois de mudar algo, recarregue a página.
+      Avisos podem ter explicação (um Aprimoramento, uma regra da mesa); problemas, não.</p>
+  </details>
+{% endif %}
+
 <div class="stale-banner" data-stale-banner hidden>
   <span><strong>Esta ficha mudou em outro lugar</strong> — talvez o mestre no combate.
     O que você digita continua sendo salvo, mas os botões de descanso e de adicionar
@@ -368,7 +389,7 @@
                    data-other aria-label="{{ skill.name }}: outros bônus">
             <span class="skill-total" data-total>
               {% if sheet.skill_mode == 'percent' %}{{ skill.total }}%
-              {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice }}d+{{ skill.total }}
+              {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice or 2 }}d+{{ skill.total }}
               {% elif sheet.skill_mode == 'dots' %}{{ skill.total }}d
               {% else %}{{ skill.total|signed }}{% endif %}
             </span>

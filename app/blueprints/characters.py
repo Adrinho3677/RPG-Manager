@@ -9,6 +9,7 @@ from flask_login import current_user, login_required
 
 from app import dice
 from app import formula as formula_helper
+from app import limiar
 from app import sheet as sheet_helper
 from app.blueprints.uploads import UploadError, asset_from_url, remove_file, save_upload
 from app.extensions import db
@@ -118,13 +119,106 @@ def create():
             flash("Ficha criada. Bora preencher!", "success")
             return redirect(url_for("characters.detail", character_id=character.id))
 
+    systems = usable_systems()
     return render_template(
         "characters/new.html",
-        systems=usable_systems(),
+        systems=systems,
         campaign=campaign,
         my_campaigns=my_campaigns,
         kinds=KINDS,
+        limiar_ids=[system.id for system in systems if limiar.uses_rules(system)],
+        limiar_campaign=bool(campaign and limiar.uses_rules(campaign.system)),
     )
+
+
+@bp.route("/nova/limiar", methods=["GET", "POST"])
+@login_required
+def create_limiar():
+    """Assistente de criação de Limiar: passo a passo, conferindo as regras."""
+    campaign_id = to_int(request.args.get("campanha") or request.form.get("campaign_id"))
+    campaign = db.session.get(Campaign, campaign_id) if campaign_id else None
+    if campaign:
+        if not campaign.can_view(current_user):
+            abort(403)
+        system = campaign.system
+    else:
+        system_id = to_int(request.args.get("sistema") or request.form.get("system_id"))
+        system = db.session.get(GameSystem, system_id) if system_id else None
+        if system is None:
+            system = GameSystem.query.filter_by(slug=limiar.SLUG, is_preset=True).first()
+    if system is None or (not campaign and not system.usable_by(current_user)):
+        abort(404)
+    if not limiar.uses_rules(system):
+        flash("Este sistema não usa as regras de Limiar.", "error")
+        return redirect(url_for("characters.create", campanha=campaign.id if campaign else None))
+
+    choices = limiar.clean_choices({})
+    problems = []
+    if request.method == "POST":
+        try:
+            raw = json.loads(request.form.get("choices") or "{}")
+        except ValueError:
+            raw = {}
+        choices = limiar.clean_choices(raw if isinstance(raw, dict) else {})
+        problems = limiar.check_creation(choices)
+        if any(p["level"] == "erro" for p in problems):
+            flash("A ficha ainda tem problemas. Confira os passos marcados.", "error")
+        else:
+            money, roll_text = limiar.roll_money()
+            data = limiar.build_data(system, choices, money=money)
+            data["progress"].append({
+                "name": "Criação de personagem (regras v%s)" % choices["version"],
+                "amount": 0,
+                "desc": "Dracmas iniciais: %s = %d dr." % (roll_text, money),
+                "at": date.today().isoformat(),
+            })
+            character = Character(
+                name=choices["name"],
+                kind="pj",
+                concept=choices["concept"],
+                avatar_url="",
+                owner_id=current_user.id,
+                campaign_id=campaign.id if campaign else None,
+                system_id=system.id,
+                visible_to_players=True,
+                data=data,
+            )
+            db.session.add(character)
+            db.session.commit()
+            flash("A ficha de %s está pronta. Dracmas iniciais: %s = %d dr." % (
+                character.name, roll_text, money), "success")
+            return redirect(url_for("characters.detail", character_id=character.id))
+
+    return render_template(
+        "characters/limiar_new.html",
+        campaign=campaign,
+        system=system,
+        problems=problems,
+        rules_json=script_json(limiar.rules_payload()),
+        choices_json=script_json(choices),
+    )
+
+
+@bp.route("/nova/limiar/conferir", methods=["POST"])
+@login_required
+def check_limiar():
+    """Confere uma criação em andamento. O assistente chama a cada mudança, e a
+    regra fica num lugar só (app/limiar.py), igual à que vale ao criar."""
+    payload = request.get_json(silent=True)
+    choices = limiar.clean_choices(payload if isinstance(payload, dict) else {})
+    picks, fixed = limiar.free_skill_picks(choices)
+    budget, marca_points, bonus = limiar.bencao_budget(choices)
+    return jsonify({
+        "ok": True,
+        "problems": limiar.check_creation(choices),
+        "derived": limiar.derived(choices),
+        "skill_picks": picks,
+        "fixed_skills": sorted(fixed),
+        "budget": {"total": budget, "marcas": marca_points, "sem_afinidade": bonus,
+                   "spent": sum(limiar.BENCAO_BY_KEY[b]["cost"] for b in choices["bencaos"]
+                                if b in limiar.BENCAO_BY_KEY)},
+        "dons_needed": limiar.expected_dons(choices),
+    })
 
 
 @bp.route("/<int:character_id>", methods=["GET", "POST"])
@@ -144,6 +238,8 @@ def detail(character_id):
     campaign = character.campaign
     return render_template(
         "characters/sheet.html",
+        limiar_check=(limiar.check_sheet(character)
+                      if limiar.uses_rules(character.system) else None),
         character=character,
         live_campaign=campaign,
         sheet=data,

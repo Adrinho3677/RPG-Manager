@@ -14,6 +14,8 @@ from app.sheet import REST_MODES
 from app import initiative as initiative_helper
 from app.utils import clean_color, script_json, slugify, to_float, to_int, unique_key
 
+KNOWN_RULES = ("limiar",)
+
 bp = Blueprint("systems", __name__, url_prefix="/sistemas")
 
 DISPLAY_CHOICES = [
@@ -268,6 +270,7 @@ def clean_payload(payload):
                 "default_max": to_int(item.get("default_max"), 10),
                 "formula": str(item.get("formula") or "").strip()[:120],
                 "max_formula": str(item.get("max_formula") or "").strip()[:160],
+                "start_empty": bool(item.get("start_empty")),
             }
         )
 
@@ -360,6 +363,9 @@ def clean_payload(payload):
         "bars": bars,
         "skills": skills,
         "meta_fields": metas,
+        # Marca que liga regras próprias (assistente de criação e conferência).
+        # Só valores conhecidos: um JSON importado não inventa comportamento.
+        "rules": payload.get("rules") if payload.get("rules") in KNOWN_RULES else "",
     }
 
 

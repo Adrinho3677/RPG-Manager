@@ -19,6 +19,7 @@ Cada campanha usa um **sistema**, que define a estrutura da ficha. Já vêm pron
 | Chamado de Cthulhu | 9 (percentuais) | 1d100 abaixo do valor | valor percentual |
 | Vampiro: A Máscara | 9 (pontos 1-5) | parada de d10, sucesso em 6+ | pontos somados ao atributo |
 | Genérico | 3 | 1d20 + mod | bônus simples |
+| Limiar | 4 (0 a 5) | N d20, pega o maior (0: 2d20, o menor) | graus de treino (+0/+5/+10/+15) |
 
 Cada um já vem com carga, moedas, regras de descanso e nomes de seção do seu sistema.
 
@@ -39,6 +40,25 @@ Usam siglas ou chaves dos atributos e campos numéricos da ficha, `+ - * /`, par
 `min()` e `max()`. A divisão arredonda para baixo. Em D&D, a sigla vale o modificador.
 São avaliadas por um analisador próprio ([app/formula.py](app/formula.py)) — nunca `eval()` —,
 então uma fórmula escrita por alguém não executa código.
+
+### Limiar: assistente de criação e conferência
+O sistema **Limiar** tem regras que um modelo de ficha não sabe conferir sozinho, então ganhou
+duas coisas a mais (regras em [app/limiar.py](app/limiar.py)):
+
+- **Assistente de criação** (`/fichas/nova/limiar`, ou o botão que aparece em *Nova ficha*):
+  segue os passos do Livro do Jogador — terra natal, passado, arquétipo, afinidade, atributos,
+  perícias, Bênçãos e Marcas, dons e kit — e marca em cada passo o que falta. O resumo mostra
+  PV, PI, Defesa e carga na hora. A conferência é feita **no servidor**, a mesma que decide se
+  a ficha pode ser criada. As dracmas iniciais (2d6 × 10) são roladas pelo servidor e ficam no
+  log de evolução.
+- **Duas versões das regras**: v0.23 (a do playtest) e v0.24, que acrescenta a afinidade de
+  nascença, o frasco de combustível no kit, os 3 pontos de Bênção de quem nasce sem afinidade,
+  os dons novos do Grimório e o passado Quebra-Pacto.
+- **✔ Conferir regras** em toda ficha de Limiar: atributos e perícias para o nível, graus
+  Avançado e Mestre, PV/PI do arquétipo, Defesa, afinidades e o orçamento da criação. *Problemas*
+  são regra quebrada; *avisos* podem ter explicação (um Aprimoramento, uma regra da mesa).
+
+Uma cópia do sistema Limiar (duplicada ou importada) continua com o assistente.
 
 ### Ficha de personagem
 Organizada em abas — **Combate, Perícias, Magias (ou Rituais, Disciplinas…), Inventário,

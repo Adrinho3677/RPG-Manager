@@ -92,7 +92,7 @@
           <span class="n">{{ skill.name }}{% if skill.attr_abbr %} <span class="muted-print">{{ skill.attr_abbr }}</span>{% endif %}</span>
           <span class="t">
             {% if sheet.skill_mode == 'percent' %}{{ skill.total }}%
-            {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice }}d+{{ skill.total }}
+            {% elif sheet.roll.type == 'keep_highest_d20' %}{{ skill.dice or 2 }}d+{{ skill.total }}
             {% elif sheet.skill_mode == 'dots' %}{{ skill.total }}d
             {% else %}{{ skill.total|signed }}{% endif %}
           </span>

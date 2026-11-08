@@ -915,3 +915,69 @@ body.tv-mode .page { max-width: none; padding: .6rem .8rem; }
                  background: rgba(224, 86, 86, .18); border-bottom: 1px solid var(--danger);
                  color: #f7d2d2; text-align: center; }
 .build-warning code { color: var(--accent-2); }
+
+/* Assistente de criação de Limiar (templates/characters/limiar_new.html) */
+.wizard-head { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between;
+               align-items: flex-end; margin-bottom: 1rem; }
+.wizard-head h1 { margin-bottom: .2rem; }
+.wizard-version { min-width: 200px; margin: 0; }
+.wizard-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 1rem; align-items: start; }
+.wizard-summary { position: sticky; top: 1rem; }
+.wz-step h2 { display: flex; align-items: center; gap: .55rem; font-size: 1.15rem; }
+.wz-num { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+          background: var(--panel-2); border: 1px solid var(--line); font-size: .9rem; flex: none; }
+.wz-status { margin-left: auto; font-size: .75rem; font-weight: 600; padding: .1rem .55rem;
+             border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.wz-status:empty { display: none; }
+.wz-status.is-ok { color: var(--success); border-color: rgba(63, 178, 127, .5); }
+.wz-status.is-warn { color: var(--accent-2); border-color: rgba(240, 169, 75, .5); }
+.wz-status.is-error { color: #f2a0a0; border-color: rgba(224, 86, 86, .5); }
+.wz-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .5rem; }
+.wz-cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.wz-card { display: flex; gap: .55rem; align-items: flex-start; padding: .6rem .7rem; cursor: pointer;
+           border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); }
+.wz-card input { width: auto; margin-top: .2rem; flex: none; }
+.wz-card:has(input:checked) { border-color: var(--accent); background: rgba(163, 103, 240, .1); }
+.wz-card.is-disabled { opacity: .5; cursor: not-allowed; }
+.wz-card-body { display: grid; gap: .15rem; min-width: 0; }
+.wz-line { color: var(--muted); font-size: .8rem; line-height: 1.35; }
+.wz-attrs { display: grid; gap: .45rem; }
+.wz-attr { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.wz-attr-name { width: 5.5rem; font-weight: 600; }
+.wz-attr-value { width: 1.6rem; text-align: center; font-size: 1.2rem; font-weight: 700; }
+.wz-skills { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; }
+.wz-skill-group h3, .wz-two h3 { font-size: .95rem; margin: 0 0 .35rem; }
+.wz-skill-group .check { margin-bottom: .25rem; }
+.wz-skill-group .tag { font-size: .68rem; padding: 0 .4rem; }
+.wz-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.wz-checks h4 { margin: .6rem 0 .25rem; font-size: .8rem; color: var(--muted); text-transform: uppercase;
+                letter-spacing: .05em; }
+.wz-check { align-items: baseline; flex-wrap: wrap; gap: .3rem; margin-bottom: .3rem; }
+.wz-check .tag { font-size: .7rem; padding: 0 .4rem; }
+.wz-list { margin: .5rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
+.wz-problems:empty { display: none; }
+.wz-erro { color: #f2a0a0; }
+.wz-aviso { color: #f7cd93; }
+.wz-ready { color: var(--success); }
+.wz-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: 0 0 .8rem; }
+.wz-stats div { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: .45rem .6rem; }
+.wz-stats dt { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.wz-stats dd { margin: 0; font-size: 1.25rem; font-weight: 700; }
+@media (max-width: 880px) {
+  .wizard-grid { grid-template-columns: 1fr; }
+  /* No celular, o resumo vira uma barra fina presa embaixo. */
+  .wizard-summary { position: sticky; top: auto; bottom: 0; z-index: 20; padding: .55rem .7rem;
+                    box-shadow: 0 -8px 20px rgba(0, 0, 0, .45); }
+  .wizard-summary h2, .wizard-summary > .hint { display: none; }
+  .wz-stats { grid-template-columns: repeat(4, 1fr); gap: .3rem; margin-bottom: .4rem; }
+  .wz-stats div { padding: .2rem .35rem; }
+  .wz-stats dt { font-size: .62rem; }
+  .wz-stats dd { font-size: .95rem; }
+  .wizard-summary [data-summary-problems] p { margin: 0 0 .35rem; font-size: .78rem; }
+}
+
+/* Conferência de regras na ficha (sistemas com regras próprias, como Limiar) */
+.rules-check summary { cursor: pointer; font-weight: 700; display: flex; gap: .5rem; align-items: center; }
+.rules-check ul { margin: .6rem 0 0; padding-left: 1.1rem; font-size: .88rem; }
+.rules-check .ok { color: var(--success); }
+.wizard-summary .btn:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.4); }
